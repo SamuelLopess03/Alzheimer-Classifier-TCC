@@ -2,9 +2,8 @@ import argparse
 import sys
 import os
 
-from training.src.data.dataset_binary import prepare_dataset_binary
-from training.src.data.dataset_multiclass import prepare_dataset_multiclass
-from training.src.utils.dataset import download_kaggle_dataset
+from training.src.data import prepare_dataset_binary, prepare_dataset_multiclass
+from training.src.utils import download_kaggle_dataset
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -28,7 +27,7 @@ def parse_args():
     parser.add_argument(
         '--output-path',
         type=str,
-        default=os.path.join(os.path.dirname(__file__), '..', '..', 'shared', 'data'),
+        default=os.path.join(os.path.dirname(__file__), '..', '..', 'shared/data'),
         help='Base output path (default: ./shared/data)'
     )
 

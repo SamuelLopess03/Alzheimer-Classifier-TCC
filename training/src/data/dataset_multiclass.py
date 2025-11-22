@@ -3,7 +3,7 @@ import shutil
 from typing import List, Tuple
 from torchvision import datasets
 
-from training.src.utils.dataset import split_dataset_train_test
+from training.src.utils import split_dataset_train_test
 
 def prepare_dataset_multiclass(
         output_base_path: str,

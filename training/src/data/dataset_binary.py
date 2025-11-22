@@ -1,12 +1,9 @@
 import os
-import sys
-import zipfile
 import shutil
-from typing import Tuple, Optional, List, Dict
-from sklearn.model_selection import train_test_split
+from typing import Tuple,  List, Dict
 from torchvision import datasets
 
-from training.src.utils.dataset import split_dataset_train_test
+from training.src.utils import split_dataset_train_test
 
 def prepare_dataset_binary(
         output_base_path: str = "./shared/data",
@@ -43,7 +40,7 @@ def prepare_dataset_binary(
     binary_dataset_path, binary_classes_aux = binarize_alzheimer_dataset(
         dataset_path=raw_dataset_path,
         output_path=binary_dataset_path,
-        non_demented_folder=binary_classes["NonDemented"],
+        non_demented_folder=binary_classes["NonDemented"][0],
         demented_classes=binary_classes["Demented"],
     )
 
