@@ -2,7 +2,7 @@ import numpy as np
 from torch.utils.data import Subset
 from sklearn.model_selection import StratifiedShuffleSplit
 from collections import Counter
-from typing import Tuple, List
+from typing import Tuple
 
 def create_stratified_holdout_split(
         dataset,

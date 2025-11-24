@@ -151,13 +151,3 @@ def validate_image_format(
             return False, f"Range inválido para float: [{image.min():.2f}, {image.max():.2f}]"
 
     return True, None
-
-def get_supported_architectures() -> list:
-    return [
-        'resnext50_32x4d',
-        'convnext_tiny',
-        'efficientnetv2_s',
-        'densenet121',
-        'vit_b_16',
-        'swin_v2_tiny'
-    ]

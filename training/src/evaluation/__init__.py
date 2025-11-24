@@ -3,7 +3,8 @@ from .metrics import (
     calculate_binary_metrics,
     aggregate_repetition_metrics,
     print_metrics_summary,
-    print_aggregated_metrics
+    print_aggregated_metrics,
+    calculate_combined_score
 )
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     "calculate_binary_metrics",
     "aggregate_repetition_metrics",
     "print_metrics_summary",
-    "print_aggregated_metrics"
+    "print_aggregated_metrics",
+    "calculate_combined_score"
 ]

@@ -13,7 +13,6 @@ from .preprocessing import (
     convert_tensor_to_numpy,
     prepare_image_for_augmentation,
     validate_image_format,
-    get_supported_architectures,
 )
 
 from .augmentation import (
@@ -39,7 +38,6 @@ __all__ = [
     'convert_tensor_to_numpy',
     'prepare_image_for_augmentation',
     'validate_image_format',
-    'get_supported_architectures',
 
     # Augmentation functions
     'get_alzheimer_grayscale_augmentation',

@@ -105,7 +105,7 @@ def main():
     args = parse_args()
 
     print("\n" + "=" * 60)
-    print("ALZHEIMER DETECTION - DATA PREPARATION")
+    print("COMEÇANDO ETAPA DE PREPARAÇÃO DOS DATASETS")
     print("=" * 60 + "\n")
 
     print("Configuração:")

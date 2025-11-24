@@ -18,10 +18,12 @@ from .wandb_logger import (
 )
 
 __all__ = [
+    # Plots Functions
     "plot_binary_confusion_matrix",
     "plot_binary_roc_curve",
     "close_figure",
 
+    # Wandb Logger Functions
     "init_wandb_run",
     "log_metrics",
     "log_confusion_matrix_figure",

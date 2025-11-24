@@ -157,10 +157,6 @@ def summarize_wandb_repetitions(
         params: Dict,
         idx: int
 ) -> Dict:
-    print(f"{'-' * 60}")
-    print(f"AGREGANDO RESULTADOS DA COMBINAÇÃO #{idx + 1}")
-    print(f"{'-' * 60}\n")
-
     aggregated = aggregate_repetition_metrics(repetition_results)
 
     repetition_summary_table = create_repetition_summary_table(
@@ -194,7 +190,6 @@ def summarize_wandb_repetitions(
     print(f"  Mean F1: {aggregated['mean_f1'] * 100:.2f}% +- {aggregated['std_f1'] * 100:.2f}%")
     print(
         f"  Mean Balanced Acc: {aggregated['mean_balanced_accuracy'] * 100:.2f}% +- {aggregated['std_balanced_accuracy'] * 100:.2f}%")
-    print(f"{'-' * 60}\n")
 
     return result
 
