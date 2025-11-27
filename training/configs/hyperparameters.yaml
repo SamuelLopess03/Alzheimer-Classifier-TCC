@@ -1,0 +1,130 @@
+# Configurações de Arquiteturas e Hiperparâmetros
+
+# Arquiteturas suportadas
+supported_architectures:
+  cnn:
+    - resnext50_32x4d
+    - convnext_tiny
+    - efficientnetv2_s
+    - densenet121
+  transformer:
+    - vit_b_16
+    - swin_v2_tiny
+
+# Configurações de adaptação para grayscale
+grayscale_adaptation:
+  enabled: true
+  preserve_pretrained_weights: true
+  expected_channels: 1
+
+# Configurações de modelo por arquitetura
+model_config:
+  resnext50_32x4d:
+    type: "cnn"
+    weights: "IMAGENET1K_V2"
+    adaptation_layer: "conv1"
+    classifier_layer: "fc"
+    freeze_backbone: true
+
+  convnext_tiny:
+    type: "cnn"
+    weights: "IMAGENET1K_V1"
+    adaptation_layer: "features[0][0]"
+    classifier_layer: "classifier"
+    freeze_backbone: true
+
+  efficientnetv2_s:
+    type: "cnn"
+    weights: "IMAGENET1K_V1"
+    adaptation_layer: "features[0][0]"
+    classifier_layer: "classifier"
+    freeze_backbone: true
+
+  densenet121:
+    type: "cnn"
+    weights: "IMAGENET1K_V1"
+    adaptation_layer: "features.conv0"
+    classifier_layer: "classifier"
+    freeze_backbone: true
+
+  vit_b_16:
+    type: "transformer"
+    timm_model: "vit_base_patch16_224"
+    pretrained: true
+    adaptation_layer: "patch_embed.proj"
+    classifier_layer: "head"
+    freeze_patch_embed: true
+    freeze_first_blocks: 3
+
+  swin_v2_tiny:
+    type: "transformer"
+    timm_model: "swinv2_tiny_window8_256"
+    pretrained: true
+    adaptation_layer: "patch_embed.proj"
+    classifier_layer: "head"
+    freeze_patch_embed: true
+    freeze_first_blocks: 3
+
+# Grid de hiperparâmetros por tipo de arquitetura
+hyperparameter_grids:
+  cnn:
+    learning_rate: [1e-2, 5e-3, 1e-3, 5e-4, 1e-4, 5e-5]
+    dropout: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    hidden_units: [128, 256, 512, 1024, 2048]
+    optimizer: ["adam", "sgd", "adamw"]
+    batch_size: [16, 32, 64, 128]
+    loss_function: ["crossentropy"]
+
+  vit:
+    learning_rate: [1e-3, 5e-4, 1e-4, 5e-5, 1e-5]
+    dropout: [0.1, 0.2, 0.3]
+    hidden_units: [256, 512, 1024]
+    optimizer: ["adamw", "adam"]
+    batch_size: [16, 32, 64]
+    loss_function: ["crossentropy"]
+
+  swin:
+    learning_rate: [5e-4, 1e-4, 5e-5, 1e-5]
+    dropout: [0.1, 0.2, 0.3]
+    hidden_units: [256, 512, 1024]
+    optimizer: ["adamw", "adam"]
+    batch_size: [32, 64]
+    loss_function: ["crossentropy"]
+
+# Configurações de Loss Function
+loss_config:
+  crossentropy:
+    use_class_weights: true
+    label_smoothing:
+      cnn: 0.0
+      transformer: 0.1
+
+# Configurações de Optimizer
+optimizer_config:
+  adam:
+    weight_decay: 1e-4
+
+  sgd:
+    momentum: 0.9
+    weight_decay: 1e-4
+
+  adamw:
+    weight_decay:
+      cnn: 1e-3
+      transformer: 0.01
+
+hardware:
+  device: "cuda"  # cuda, cpu, auto
+  mixed_precision: true
+  num_workers: 4
+  pin_memory: true
+
+logging:
+  enabled: true
+
+# Resultados
+results:
+  save_path: "./shared/logs/experiments"
+  top_k_models: 3
+  save_checkpoints: true
+  log_model_summary: true

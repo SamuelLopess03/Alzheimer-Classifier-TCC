@@ -8,6 +8,7 @@ from .architectures import (
 from .model_adapters import (
     adapt_model_for_grayscale,
     verify_grayscale_adaptation,
+    get_adaptation_info
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     # Model adapters
     'adapt_model_for_grayscale',
     'verify_grayscale_adaptation',
+    "get_adaptation_info"
 ]
