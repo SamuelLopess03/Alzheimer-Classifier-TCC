@@ -115,7 +115,7 @@ def normalize_image(image: np.ndarray) -> np.ndarray:
 
     return image
 
-def prepare_image_for_augmentation(image, ensure_uint8: bool = True) -> np.ndarray:
+def prepare_image_for_augmentation(image) -> np.ndarray:
     if isinstance(image, Image.Image):
         image = convert_pil_to_numpy(image)
     elif isinstance(image, torch.Tensor):

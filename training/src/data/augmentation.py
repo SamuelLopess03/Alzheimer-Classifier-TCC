@@ -2,10 +2,11 @@ import numpy as np
 import albumentations as alb
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset, Subset
-from typing import List
+from typing import List, Optional
 from collections import Counter
 
 from .preprocessing import MedicalImagePreprocessor, prepare_image_for_augmentation
+from training.src.utils import load_augmentation_config
 
 def get_alzheimer_grayscale_augmentation(
         architecture_name: str,
@@ -14,119 +15,155 @@ def get_alzheimer_grayscale_augmentation(
 ) -> alb.Compose:
     preprocessor = MedicalImagePreprocessor(architecture_name)
     config = preprocessor.config
+    aug_config = load_augmentation_config()
 
     is_transformer = architecture_name.lower() in ['vit_b_16', 'swin_v2_tiny']
 
     if is_training:
-        if dataset_size < 20000:
-            print(f"\nAugmentação Pesada: Dataset pequeno (<20k) - {'Transformer' if is_transformer else 'CNN'}\n")
+        thresholds = aug_config['dataset_size_thresholds']
+
+        if dataset_size < thresholds['small']:
+            print(
+                f"\nAugmentação Pesada: Dataset pequeno (<{thresholds['small']}) - {'Transformer' if is_transformer else 'CNN'}\n")
 
             if is_transformer:
-                # Transformers: augmentation mais leve para preservar estrutura
+                cfg = aug_config['train_heavy_transformer']
+
+                tile_grid_size = (int(cfg['clahe']['tile_grid_size'][0]),
+                                  int(cfg['clahe']['tile_grid_size'][1]))
+
                 augmentations = [
                     alb.Resize(config["image_size"], config["image_size"]),
-
-                    # Geométricas
-                    alb.HorizontalFlip(p=0.4),
-                    alb.Rotate(limit=3, p=0.3),
-
-                    # Intensidade
-                    alb.CLAHE(clip_limit=1.5, tile_grid_size=(6, 6), p=0.5),
-                    alb.RandomBrightnessContrast(
-                        brightness_limit=0.08,
-                        contrast_limit=0.1,
-                        p=0.4
+                    alb.HorizontalFlip(p=cfg['horizontal_flip']['probability']),
+                    alb.Rotate(limit=cfg['rotation']['limit'], p=cfg['rotation']['probability']),
+                    alb.CLAHE(
+                        clip_limit=cfg['clahe']['clip_limit'],
+                        tile_grid_size=tile_grid_size,
+                        p=cfg['clahe']['probability']
                     ),
-
-                    # Normalização e conversão para tensor
+                    alb.RandomBrightnessContrast(
+                        brightness_limit=cfg['brightness_contrast']['brightness_limit'],
+                        contrast_limit=cfg['brightness_contrast']['contrast_limit'],
+                        p=cfg['brightness_contrast']['probability']
+                    ),
                     alb.Normalize(mean=config["mean"], std=config["std"]),
                     ToTensorV2()
                 ]
             else:
-                # CNNs: augmentation pesada
+                cfg = aug_config['train_heavy_cnn']
+
+                # Tipagens Necessárias para Evitar os Avisos do Type Checker
+                scale = (float(cfg['affine']['scale'][0]), float(cfg['affine']['scale'][1]))
+                translate_percent = (float(cfg['affine']['translate_percent'][0]), float(cfg['affine']['translate_percent'][1]))
+                rotate = (float(cfg['affine']['rotate'][0]), float(cfg['affine']['rotate'][1]))
+                tile_grid_size = (int(cfg['clahe']['tile_grid_size'][0]), int(cfg['clahe']['tile_grid_size'][1]))
+                gamma_limit = (float(cfg['random_gamma']['gamma_limit'][0]), float(cfg['random_gamma']['gamma_limit'][1]))
+                blur_limit = (int(cfg['blur_sharpen']['gaussian_blur']['blur_limit'][0]),
+                              int(cfg['blur_sharpen']['gaussian_blur']['blur_limit'][1]))
+                sharpen_alpha = (float(cfg['blur_sharpen']['sharpen']['alpha'][0]), float(cfg['blur_sharpen']['sharpen']['alpha'][1]))
+                sharpen_lightness = (float(cfg['blur_sharpen']['sharpen']['lightness'][0]),
+                                     float(cfg['blur_sharpen']['sharpen']['lightness'][1]))
+
                 augmentations = [
                     alb.Resize(config["image_size"], config["image_size"]),
-
-                    # Geométricas
-                    alb.HorizontalFlip(p=0.5),
-                    alb.Rotate(limit=5, p=0.4),
+                    alb.HorizontalFlip(p=cfg['horizontal_flip']['probability']),
+                    alb.Rotate(limit=cfg['rotation']['limit'], p=cfg['rotation']['probability']),
                     alb.Affine(
-                        scale=(0.95, 1.05),
-                        translate_percent=(-0.05, 0.05),
-                        rotate=(-3, 3),
-                        p=0.3
+                        scale=scale,
+                        translate_percent=translate_percent,
+                        rotate=rotate,
+                        p=cfg['affine']['probability']
                     ),
-
-                    # Intensidade
-                    alb.CLAHE(clip_limit=2.0, tile_grid_size=(4, 4), p=0.7),
+                    alb.CLAHE(
+                        clip_limit=cfg['clahe']['clip_limit'],
+                        tile_grid_size=tile_grid_size,
+                        p=cfg['clahe']['probability']
+                    ),
                     alb.RandomBrightnessContrast(
-                        brightness_limit=0.1,
-                        contrast_limit=0.15,
-                        p=0.6
+                        brightness_limit=cfg['brightness_contrast']['brightness_limit'],
+                        contrast_limit=cfg['brightness_contrast']['contrast_limit'],
+                        p=cfg['brightness_contrast']['probability']
                     ),
-                    alb.RandomGamma(gamma_limit=(90, 110), p=0.5),
-
-                    # Blur/Sharpen
+                    alb.RandomGamma(
+                        gamma_limit=gamma_limit,
+                        p=cfg['random_gamma']['probability']
+                    ),
                     alb.OneOf([
-                        alb.GaussianBlur(blur_limit=(1, 3), p=1.0),
-                        alb.Sharpen(alpha=(0.1, 0.3), lightness=(0.7, 1.0), p=1.0),
-                    ], p=0.3),
-
-                    # Normalização e conversão para tensor
+                        alb.GaussianBlur(blur_limit=blur_limit, p=1.0),
+                        alb.Sharpen(
+                            alpha=sharpen_alpha,
+                            lightness=sharpen_lightness,
+                            p=1.0
+                        ),
+                    ], p=cfg['blur_sharpen']['probability']),
                     alb.Normalize(mean=config["mean"], std=config["std"]),
                     ToTensorV2()
                 ]
 
-        elif dataset_size < 50000:
-            print(f"\nAugmentação Moderada: Dataset médio (<50k)\n")
+        elif dataset_size < thresholds['medium']:
+            print(f"\nAugmentação Moderada: Dataset médio (<{thresholds['medium']})\n")
+
+            cfg = aug_config['train_moderate']
+
+            tile_grid_size = (int(cfg['clahe']['tile_grid_size'][0]),
+                              int(cfg['clahe']['tile_grid_size'][1]))
+            gamma_limit = (float(cfg['random_gamma']['gamma_limit'][0]), float(cfg['random_gamma']['gamma_limit'][1]))
+            blur_limit = (int(cfg['gaussian_blur']['blur_limit'][0]),
+                          int(cfg['gaussian_blur']['blur_limit'][1]))
+
             augmentations = [
                 alb.Resize(config["image_size"], config["image_size"]),
-
-                # Geométricas moderadas
-                alb.HorizontalFlip(p=0.5),
-                alb.Rotate(limit=3, p=0.3),
-
-                # Intensidade moderada
-                alb.CLAHE(clip_limit=1.5, tile_grid_size=(6, 6), p=0.5),
-                alb.RandomBrightnessContrast(
-                    brightness_limit=0.08,
-                    contrast_limit=0.1,
-                    p=0.4
+                alb.HorizontalFlip(p=cfg['horizontal_flip']['probability']),
+                alb.Rotate(limit=cfg['rotation']['limit'], p=cfg['rotation']['probability']),
+                alb.CLAHE(
+                    clip_limit=cfg['clahe']['clip_limit'],
+                    tile_grid_size=tile_grid_size,
+                    p=cfg['clahe']['probability']
                 ),
-                alb.RandomGamma(gamma_limit=(95, 105), p=0.3),
-
-                # Blur leve
-                alb.GaussianBlur(blur_limit=(1, 2), p=0.1),
-
-                # Normalização e conversão para tensor
+                alb.RandomBrightnessContrast(
+                    brightness_limit=cfg['brightness_contrast']['brightness_limit'],
+                    contrast_limit=cfg['brightness_contrast']['contrast_limit'],
+                    p=cfg['brightness_contrast']['probability']
+                ),
+                alb.RandomGamma(
+                    gamma_limit=gamma_limit,
+                    p=cfg['random_gamma']['probability']
+                ),
+                alb.GaussianBlur(
+                    blur_limit=blur_limit,
+                    p=cfg['gaussian_blur']['probability']
+                ),
                 alb.Normalize(mean=config["mean"], std=config["std"]),
                 ToTensorV2()
             ]
 
         else:
-            print(f"\nAugmentação Leve: Dataset grande (≥50k)\n")
+            print(f"\nAugmentação Leve: Dataset grande (≥{thresholds['large']})\n")
+
+            cfg = aug_config['train_light']
+
+            tile_grid_size = (int(cfg['clahe']['tile_grid_size'][0]),
+                              int(cfg['clahe']['tile_grid_size'][1]))
+
             augmentations = [
                 alb.Resize(config["image_size"], config["image_size"]),
-
-                # Geométricas leves
-                alb.HorizontalFlip(p=0.3),
-                alb.Rotate(limit=2, p=0.2),
-
-                # Intensidade leve
-                alb.CLAHE(clip_limit=1.2, tile_grid_size=(8, 8), p=0.3),
-                alb.RandomBrightnessContrast(
-                    brightness_limit=0.05,
-                    contrast_limit=0.05,
-                    p=0.2
+                alb.HorizontalFlip(p=cfg['horizontal_flip']['probability']),
+                alb.Rotate(limit=cfg['rotation']['limit'], p=cfg['rotation']['probability']),
+                alb.CLAHE(
+                    clip_limit=cfg['clahe']['clip_limit'],
+                    tile_grid_size=tile_grid_size,
+                    p=cfg['clahe']['probability']
                 ),
-
-                # Normalização e conversão para tensor
+                alb.RandomBrightnessContrast(
+                    brightness_limit=cfg['brightness_contrast']['brightness_limit'],
+                    contrast_limit=cfg['brightness_contrast']['contrast_limit'],
+                    p=cfg['brightness_contrast']['probability']
+                ),
                 alb.Normalize(mean=config["mean"], std=config["std"]),
                 ToTensorV2()
             ]
 
     else:
-        # Validação/Teste: apenas preprocessing
         augmentations = [
             alb.Resize(config["image_size"], config["image_size"]),
             alb.Normalize(mean=config["mean"], std=config["std"]),
@@ -138,68 +175,102 @@ def get_alzheimer_grayscale_augmentation(
 def create_synthetic_augmentation_for_minority(
         architecture_name: str
 ) -> alb.Compose:
+    aug_config = load_augmentation_config()
     is_transformer = architecture_name.lower() in ['vit_b_16', 'swin_v2_tiny']
 
     if is_transformer:
-        # Transformers: augmentations geométricas mais sutis
+        cfg = aug_config['synthetic_transformer']
+
+        # Tipagens Necessárias para Evitar os Avisos do Type Checker
+        translate_percent_x = (float(cfg['affine']['translate_percent']['x'][0]),
+                               float(cfg['affine']['translate_percent']['x'][1]))
+        translate_percent_y = (float(cfg['affine']['translate_percent']['y'][0]),
+                               float(cfg['affine']['translate_percent']['y'][1]))
+        scale = (float(cfg['affine']['scale'][0]), float(cfg['affine']['scale'][1]))
+        rotate = (float(cfg['affine']['rotate'][0]), float(cfg['affine']['rotate'][1]))
+        std_range = (float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1]))
+        mean_range = (float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1]))
+
         augmentations = [
-            alb.VerticalFlip(p=0.3),
-
+            alb.VerticalFlip(p=cfg['vertical_flip']['probability']),
             alb.Affine(
-                translate_percent={"x": (-0.08, 0.08), "y": (-0.08, 0.08)},
-                scale=(0.9, 1.1),
-                rotate=(-7, 7),
-                p=0.5
+                translate_percent={
+                    "x": translate_percent_x,
+                    "y": translate_percent_y
+                },
+                scale=scale,
+                rotate=rotate,
+                p=cfg['affine']['probability']
             ),
-
-            # Intensidade
-            alb.RandomToneCurve(scale=0.15, p=0.4),
+            alb.RandomToneCurve(
+                scale=cfg['random_tone_curve']['scale'],
+                p=cfg['random_tone_curve']['probability']
+            ),
             alb.ColorJitter(
-                brightness=0.1,
-                contrast=0.15,
-                saturation=0.0,
-                hue=0.0,
-                p=0.4
+                brightness=cfg['color_jitter']['brightness'],
+                contrast=cfg['color_jitter']['contrast'],
+                saturation=cfg['color_jitter']['saturation'],
+                hue=cfg['color_jitter']['hue'],
+                p=cfg['color_jitter']['probability']
             ),
-
-            # Ruído
-            alb.GaussNoise(std_range=(0.05, 0.15), mean_range=(0.0, 0.0), p=0.4),
+            alb.GaussNoise(
+                std_range=std_range,
+                mean_range=mean_range,
+                p=cfg['gauss_noise']['probability']
+            ),
         ]
     else:
-        # CNNs: augmentations mais agressivas
+        cfg = aug_config['synthetic_cnn']
+
+        # Tipagens Necessárias para Evitar os Avisos do Type Checker
+        translate_percent_x = (float(cfg['affine']['translate_percent']['x'][0]),
+                               float(cfg['affine']['translate_percent']['x'][1]))
+        translate_percent_y = (float(cfg['affine']['translate_percent']['y'][0]),
+                               float(cfg['affine']['translate_percent']['y'][1]))
+        scale = (float(cfg['affine']['scale'][0]), float(cfg['affine']['scale'][1]))
+        rotate = (float(cfg['affine']['rotate'][0]), float(cfg['affine']['rotate'][1]))
+        std_range = (float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1]))
+        mean_range = (float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1]))
+        color_shift = (float(cfg['iso_noise']['color_shift'][0]), float(cfg['iso_noise']['color_shift'][1]))
+        intensity = (float(cfg['iso_noise']['intensity'][0]), float(cfg['iso_noise']['intensity'][1]))
+
         augmentations = [
-            alb.VerticalFlip(p=0.3),
-
+            alb.VerticalFlip(p=cfg['vertical_flip']['probability']),
             alb.Affine(
-                translate_percent={"x": (-0.1, 0.1), "y": (-0.1, 0.1)},
-                scale=(0.85, 1.15),
-                rotate=(-10, 10),
-                p=0.6
+                translate_percent={
+                    "x": translate_percent_x,
+                    "y": translate_percent_y
+                },
+                scale=scale,
+                rotate=rotate,
+                p=cfg['affine']['probability']
             ),
-
             alb.ElasticTransform(
-                alpha=1,
-                sigma=20,
-                p=0.3
+                alpha=cfg['elastic_transform']['alpha'],
+                sigma=cfg['elastic_transform']['sigma'],
+                p=cfg['elastic_transform']['probability']
             ),
-
-            # Intensidade
-            alb.RandomToneCurve(scale=0.2, p=0.5),
-            alb.Equalize(p=0.3),
+            alb.RandomToneCurve(
+                scale=cfg['random_tone_curve']['scale'],
+                p=cfg['random_tone_curve']['probability']
+            ),
+            alb.Equalize(p=cfg['equalize']['probability']),
             alb.ColorJitter(
-                brightness=0.15,
-                contrast=0.2,
-                saturation=0.0,
-                hue=0.0,
-                p=0.5
+                brightness=cfg['color_jitter']['brightness'],
+                contrast=cfg['color_jitter']['contrast'],
+                saturation=cfg['color_jitter']['saturation'],
+                hue=cfg['color_jitter']['hue'],
+                p=cfg['color_jitter']['probability']
             ),
-
-            # Ruído
-            alb.GaussNoise(std_range=(0.05, 0.15), mean_range=(0.0, 0.0), p=0.4),
+            alb.GaussNoise(
+                std_range=std_range,
+                mean_range=mean_range,
+                p=cfg['gauss_noise']['probability']
+            ),
             alb.ISONoise(
-                color_shift=(0.01, 0.05),
-                intensity=(0.1, 0.3),
-                p=0.3
+                color_shift=color_shift,
+                intensity=intensity,
+                p=cfg['iso_noise']['probability']
             ),
         ]
 
@@ -222,7 +293,7 @@ class DynamicAugmentationDataset(Dataset):
     def __getitem__(self, idx):
         image, label = self.subset_dataset[idx]
 
-        image = prepare_image_for_augmentation(image, ensure_uint8=True)
+        image = prepare_image_for_augmentation(image)
 
         transformed = self.transform(image=image)
         processed_image = transformed['image']
@@ -246,7 +317,7 @@ class StaticPreprocessedDataset(Dataset):
 
         for idx in range(len(subset_dataset)):
             image, label = subset_dataset[idx]
-            image = prepare_image_for_augmentation(image, ensure_uint8=True)
+            image = prepare_image_for_augmentation(image)
 
             transformed = self.transform(image=image)
             processed_image = transformed['image']
@@ -297,7 +368,7 @@ class SyntheticAugmentedDataset(Dataset):
         else:
             image, label = base_dataset[original_idx]
 
-        image = prepare_image_for_augmentation(image, ensure_uint8=True)
+        image = prepare_image_for_augmentation(image)
 
         augmented = self.augmentation_transform(image=image)
         image = augmented['image']
@@ -306,13 +377,25 @@ class SyntheticAugmentedDataset(Dataset):
 
 def augment_minority_class(
         train_split: Subset,
-        target_strategy: str = 'balance',
-        target_ratio: float = 0.6,
+        target_strategy: Optional[str] = None,
+        target_ratio: Optional[float] = None,
         architecture_name: str = 'resnext50_32x4d',
-        minority_class: int = 0
+        minority_classes: Optional[List[int]] = None
 ) -> Subset:
+    aug_config = load_augmentation_config()
+    minority_config = aug_config['minority_augmentation']
+
+    if minority_classes is None:
+        minority_classes = [0]
+
+    if target_strategy is None:
+        target_strategy = list(minority_config["strategies"].keys())[1]
+
+    if target_ratio is None and target_strategy == 'ratio':
+        target_ratio = minority_config['strategies']['ratio']['default_ratio']
+
     print(f"\n{'-' * 60}")
-    print("AUGMENTAÇÃO DA CLASSE MINORITÁRIA")
+    print("AUGMENTAÇÃO DAS CLASSES MINORITÁRIAS")
     print(f"{'-' * 60}\n")
 
     if hasattr(train_split.dataset, 'targets'):
@@ -329,42 +412,69 @@ def augment_minority_class(
     train_labels = all_labels[train_split.indices]
 
     class_counts = Counter(train_labels)
-    minority_count = class_counts[minority_class]
-    majority_class = 1 - minority_class
-    majority_count = class_counts[majority_class]
 
-    if target_strategy == 'balance':
-        target_minority_count = majority_count
-        print(f"\nEstratégia: Balance (igualar classes)\n")
-    elif target_strategy == 'ratio':
-        target_minority_count = int(majority_count * target_ratio)
-        print(f"\nEstratégia: Ratio {target_ratio}:1\n")
-    elif target_strategy == 'proportional':
-        target_minority_count = int(minority_count * 1.5)
-        print(f"\nEstratégia: Proportional (1.5x)\n")
+    all_classes = set(class_counts.keys())
+    majority_classes = all_classes - set(minority_classes)
+
+    if len(majority_classes) > 0:
+        majority_count = max([class_counts[c] for c in majority_classes])
     else:
-        raise ValueError(f"\nEstratégia desconhecida: {target_strategy}\n")
+        majority_count = max(class_counts.values())
 
-    num_synthetic = max(0, target_minority_count - minority_count)
+    targets_per_class = {}
+    for minority_class in minority_classes:
+        minority_count = class_counts[minority_class]
 
-    if num_synthetic == 0:
+        if target_strategy == 'balance':
+            target_minority_count = majority_count
+        elif target_strategy == 'ratio':
+            target_minority_count = int(majority_count * target_ratio)
+        elif target_strategy == 'proportional':
+            multiplier = minority_config['strategies']['proportional']['multiplier']
+            target_minority_count = int(minority_count * multiplier)
+        else:
+            raise ValueError(f"\nEstratégia desconhecida: {target_strategy}\n")
+
+        targets_per_class[minority_class] = target_minority_count
+
+    print(f"\nEstratégia: {target_strategy}")
+    if target_strategy == 'ratio':
+        print(f"Ratio: {target_ratio}:1")
+    print()
+
+    all_synthetic_indices = []
+    base_seed = minority_config['random_seed']['base']
+    use_offset = minority_config['random_seed']['per_class_offset']
+
+    for minority_class in minority_classes:
+        minority_count = class_counts[minority_class]
+        target_minority_count = targets_per_class[minority_class]
+        num_synthetic = max(0, target_minority_count - minority_count)
+
+        if num_synthetic > 0:
+            print(f"Classe {minority_class}: gerando {num_synthetic} amostras sintéticas")
+
+            minority_indices_in_split = [
+                train_split.indices[i]
+                for i in range(len(train_split))
+                if train_labels[i] == minority_class
+            ]
+
+            seed = base_seed + minority_class if use_offset else base_seed
+            np.random.seed(seed)
+            synthetic_source_indices = np.random.choice(
+                minority_indices_in_split,
+                size=num_synthetic,
+                replace=True
+            )
+
+            all_synthetic_indices.extend(synthetic_source_indices.tolist())
+
+    if len(all_synthetic_indices) == 0:
         print(f"\nNenhuma amostra sintética necessária.\n")
         return train_split
 
-    print(f"\nGerando {num_synthetic} amostras sintéticas...\n")
-
-    minority_indices_in_split = [
-        train_split.indices[i]
-        for i in range(len(train_split))
-        if train_labels[i] == minority_class
-    ]
-
-    np.random.seed(42)
-    synthetic_source_indices = np.random.choice(
-        minority_indices_in_split,
-        size=num_synthetic,
-        replace=True
-    )
+    print(f"\nTotal de amostras sintéticas: {len(all_synthetic_indices)}\n")
 
     synthetic_transform = create_synthetic_augmentation_for_minority(
         architecture_name=architecture_name
@@ -372,7 +482,7 @@ def augment_minority_class(
 
     augmented_dataset = SyntheticAugmentedDataset(
         original_dataset=train_split,
-        synthetic_indices=synthetic_source_indices.tolist(),
+        synthetic_indices=all_synthetic_indices,
         augmentation_transform=synthetic_transform,
         original_transform=None
     )
@@ -380,12 +490,15 @@ def augment_minority_class(
     new_indices = list(range(len(augmented_dataset)))
     augmented_split = Subset(augmented_dataset, new_indices)
 
-    print(f"\nDistribuição Final:")
-    print(f"   Classe {minority_class}: {target_minority_count} amostras")
-    print(f"   Classe {majority_class}: {majority_count} amostras")
-    print(f"   Total: {len(augmented_split)} amostras")
-    print(f"   Novo Ratio: 1:{majority_count / target_minority_count:.2f}")
+    print(f"Distribuição Final:")
+    for class_idx in sorted(class_counts.keys()):
+        if class_idx in minority_classes:
+            final_count = targets_per_class[class_idx]
+        else:
+            final_count = class_counts[class_idx]
+        print(f"   Classe {class_idx}: {final_count} amostras")
+    print(f"   Total: {len(augmented_split)} amostras\n")
 
-    print(f"\n{'-' * 60}\n")
+    print(f"{'-' * 60}\n")
 
     return augmented_split
