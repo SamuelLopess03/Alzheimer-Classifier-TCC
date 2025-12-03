@@ -10,7 +10,12 @@ from training.src.models import (
     create_model_with_architecture,
     get_architecture_specific_param_grid
 )
-from training.src.utils import create_stratified_holdout_split
+from training.src.utils import (
+    create_stratified_holdout_split,
+    load_binary_config,
+    load_multiclass_config,
+    load_hyperparameters_config
+)
 from training.src.data import augment_minority_class
 from training.src.evaluation import calculate_combined_score
 from training.src.visualization import (
@@ -18,8 +23,13 @@ from training.src.visualization import (
     summarize_wandb_repetitions,
     finish_wandb_run
 )
-
 from .trainer import train_holdout_model
+
+def get_model_config(model_type: str = 'binary') -> Dict:
+    if model_type == 'multiclass':
+        return load_multiclass_config()
+    else:
+        return load_binary_config()
 
 class GridSearchCheckpointManager:
     def __init__(self, base_path: str):
@@ -118,27 +128,31 @@ def generate_random_combinations(
 def improved_combination_evaluation(
         repetition_results: List[Dict],
         params: Dict,
-        idx: int,
+        index_combination: int,
         architecture_name: str,
         checkpoint_manager: GridSearchCheckpointManager,
         executed_indices: Set[int],
         results: Dict,
-        total_combinations: int
+        total_combinations: int,
+        model_type: str = 'binary'
 ) -> Dict:
+    model_type_display = "BINÁRIO" if model_type == 'binary' else "MULTICLASSE"
+
     print(f"\n{'-' * 60}")
-    print(f"AGREGANDO RESULTADOS DA COMBINAÇÃO #{idx + 1}")
+    print(f"AGREGANDO RESULTADOS DA COMBINAÇÃO #{index_combination + 1} ({model_type_display})")
     print(f"{'-' * 60}\n")
 
-    result = summarize_wandb_repetitions(repetition_results, params, idx)
+    result = summarize_wandb_repetitions(repetition_results, params, index_combination)
     aggregated = result['aggregated']
 
+    checkpoint_key = f"{architecture_name}_{model_type}"
     checkpoint_manager.save_combination_result(
-        architecture_name, idx, params, aggregated
+        checkpoint_key, index_combination, params, aggregated
     )
 
     current_score = calculate_combined_score(aggregated)
 
-    print(f"Score Combinado: {current_score:.6f}\n")
+    print(f"Score Combinado ({model_type_display}): {current_score:.6f}\n")
 
     if current_score > results['best_score']:
         improvement = current_score - results['best_score']
@@ -147,12 +161,14 @@ def improved_combination_evaluation(
         results['best_score'] = current_score
         results['best_params'] = params.copy()
         results['best_metrics'] = aggregated.copy()
-        results['best_combination_index'] = idx
+        results['best_combination_index'] = index_combination
+        results['model_type'] = model_type
 
         wandb.run.summary["is_best"] = True
         wandb.run.summary["best_score"] = current_score
+        wandb.run.summary["model_type"] = model_type_display
 
-        print(f"\nNOVA MELHOR COMBINAÇÃO!")
+        print(f"\nNOVA MELHOR COMBINAÇÃO ({model_type_display})!")
         print(f"  Score Anterior: {old_best_score:.6f}")
         print(f"  Score Atual: {current_score:.6f}\n")
 
@@ -160,13 +176,13 @@ def improved_combination_evaluation(
             print(f"  Melhoria: +{improvement:.6f} ({improvement / old_best_score * 100:.2f}%)\n")
     else:
         score_diff = results['best_score'] - current_score
-        print(f"\nNão superou a melhor combinação:")
+        print(f"\nNão superou a melhor combinação ({model_type_display}):")
         print(f"   Score Atual:  {current_score:.6f}")
         print(f"   Melhor Score: {results['best_score']:.6f}")
         print(f"   Diferença: {score_diff:.6f} ({score_diff / results['best_score'] * 100:.2f}%)\n")
 
-    executed_indices.add(idx)
-    checkpoint_manager.save_execution_state(architecture_name, executed_indices, results)
+    executed_indices.add(index_combination)
+    checkpoint_manager.save_execution_state(checkpoint_key, executed_indices, results)
 
     progress_percent = len(executed_indices) / total_combinations * 100
     remaining = total_combinations - len(executed_indices)
@@ -184,26 +200,34 @@ def final_search_summary(
         executed_indices: Set[int],
         total_combinations: int,
         architecture_name: str,
-        checkpoint_manager: GridSearchCheckpointManager
+        checkpoint_manager: GridSearchCheckpointManager,
+        model_type: str = 'binary'
 ) -> Dict:
+    model_type_display = "BINÁRIO" if model_type == 'binary' else "MULTICLASSE"
+
+    config = get_model_config(model_type)
+    class_names = config['model']['class_names']
+
     print(f"\n{'-' * 60}")
-    print(f"BUSCA DE HIPERPARÂMETROS CONCLUÍDA")
+    print(f"BUSCA DE HIPERPARÂMETROS CONCLUÍDA ({model_type_display})")
     print(f"{'-' * 60}")
     print(f"\nArquitetura: {architecture_name.upper()}")
+    print(f"Tipo de Modelo: {model_type_display}")
+    print(f"Classes: {class_names}")
     print(f"Combinações Testadas: {len(executed_indices)}/{total_combinations} "
           f"({len(executed_indices) / total_combinations * 100:.1f}%)\n")
 
     if results['best_params']:
-        print(f"\nScore Final: {results['best_score']:.6f}")
+        print(f"\nScore Final ({model_type_display}): {results['best_score']:.6f}")
 
-        print(f"\nHiperparâmetros Ótimos:")
+        print(f"\nHiperparâmetros Ótimos ({model_type_display}):")
         for param_name, param_value in results['best_params'].items():
             print(f"  {param_name:20s}: {param_value}")
 
         if results.get('best_metrics'):
             best_metrics = results['best_metrics']
 
-            print(f"\nMétricas Finais:")
+            print(f"\nMétricas Finais ({model_type_display}):")
             metrics_to_show = [
                 ('Balanced Accuracy', 'mean_balanced_accuracy', 'std_balanced_accuracy'),
                 ('F1-Score', 'mean_f1', 'std_f1'),
@@ -219,16 +243,22 @@ def final_search_summary(
                 std_val = best_metrics.get(std_key, 0.0)
                 print(f"  {metric_name:<25}: {mean_val:.4f} +- {std_val:.4f}")
 
-            print(f"\nInterpretação Clínica:")
+            print(f"\nInterpretação Clínica ({model_type_display}):")
             sens = best_metrics.get('mean_recall', 0.0)
             spec = best_metrics.get('mean_specificity', 0.0)
 
-            print(f"  De cada 100 pacientes COM demência:")
-            print(f"    ~{sens * 100:.0f} são detectados corretamente")
-            print(f"  De cada 100 pacientes SEM demência:")
-            print(f"    ~{spec * 100:.0f} são identificados corretamente\n")
+            if model_type == 'binary':
+                print(f"  De cada 100 pacientes COM demência:")
+                print(f"    ~{sens * 100:.0f} são detectados corretamente")
+                print(f"  De cada 100 pacientes SEM demência:")
+                print(f"    ~{spec * 100:.0f} são identificados corretamente\n")
+            else:
+                print(f"  Classifica entre: {', '.join(class_names)}")
+                print(f"  Acurácia Balanceada: {best_metrics.get('mean_balanced_accuracy', 0.0) * 100:.2f}%\n")
 
-    final_path = checkpoint_manager.get_search_directory(architecture_name) / 'final_results.json'
+    final_path = checkpoint_manager.get_search_directory(
+        f"{architecture_name}_{model_type}"
+    ) / 'final_results.json'
 
     results_serializable = {}
     for key, value in results.items():
@@ -254,43 +284,89 @@ def search_best_hyperparameters_holdout(
         architecture_name: str,
         device: torch.device,
         train_dataset,
-        class_names: List[str],
-        max_combinations: int,
-        num_epochs: int,
-        early_stopping_patience: int,
+        model_type: str = 'binary',
         n_repetitions: int = 1,
-        train_ratio: float = 0.7,
-        val_ratio: float = 0.3,
-        save_path: str = './shared/logs/experiments',
-        augment_minority: bool = True,
-        minority_target_strategy: str = 'balance',
-        minority_target_ratio: float = 0.5,
-        wandb_project: str = "alzheimer-detection",
-        wandb_entity: Optional[str] = None
+        max_combinations: Optional[int] = None
 ) -> Dict:
+    config = get_model_config(model_type)
+    hyperparams_config = load_hyperparameters_config()
+
+    model_config = config['model']
+    data_config = config['data']
+    training_config = config['training']
+    logging_config = config['logging']
+
+    class_names = model_config['class_names']
+    num_classes = model_config['num_classes']
+
+    num_epochs = training_config['epochs']
+    early_stopping_patience = training_config['patience']
+
+    train_ratio = data_config['split_ratios']['train']
+    val_ratio = data_config['split_ratios']['val']
+    random_seed = data_config['random_seed']
+    stratify = data_config['stratify']
+
+    minority_config = data_config['minority_augmentation']
+    augment_minority = minority_config['enabled']
+    minority_target_strategy = minority_config['strategy']
+    minority_target_ratio = minority_config.get('target_ratio', 0.6)
+    minority_classes = data_config.get('minority_classes', [])
+
+    wandb_config = logging_config.get('wandb', {})
+    wandb_enabled = wandb_config.get('enabled', False)
+    wandb_project = wandb_config.get('project', 'alzheimer-detection')
+    wandb_entity = wandb_config.get('entity', None)
+
+    save_path = hyperparams_config['results']['save_path']
+
+    if max_combinations is None:
+        arch_type = hyperparams_config['model_config'][architecture_name.lower()]['type']
+        if arch_type == 'transformer':
+            max_combinations = 200
+        else:
+            max_combinations = 300
+
+    model_type_display = "BINÁRIO" if model_type == 'binary' else "MULTICLASSE"
+
     print(f"\n{'-' * 60}")
-    print(f"BUSCA DE HIPERPARÂMETROS: {architecture_name.upper()}")
+    print(f"BUSCA DE HIPERPARÂMETROS: {architecture_name.upper()} ({model_type_display})")
     print(f"{'-' * 60}")
-    print(f"Método: Random Search com Holdout ({n_repetitions} repetições)")
-    print(f"Divisão: {train_ratio:.0%} treino, {val_ratio:.0%} validação")
-    print(f"Max combinações: {max_combinations}")
-    print(f"Augmentação Minoritária: {'SIM' if augment_minority else 'NÃO'}")
+    print(f"Configurações Carregadas:")
+    print(f"  Método: Random Search com Holdout ({n_repetitions} repetições)")
+    print(f"  Classes: {class_names}")
+    print(f"  Número de Classes: {num_classes}")
+    print(f"  Divisão: {train_ratio:.0%} treino, {val_ratio:.0%} validação")
+    print(f"  Épocas: {num_epochs}")
+    print(f"  Patience: {early_stopping_patience}")
+    print(f"  Max Combinações: {max_combinations}")
+    print(f"  Stratify: {stratify}")
+    print(f"  Random Seed: {random_seed}")
+    print(f"  Augmentação Minoritária: {'SIM' if augment_minority else 'NÃO'}")
     if augment_minority:
-        print(f"  Estratégia: {minority_target_strategy}")
+        print(f"    Estratégia: {minority_target_strategy}")
         if minority_target_strategy == 'ratio':
-            print(f"  Target Ratio: {minority_target_ratio}")
+            print(f"    Target Ratio: {minority_target_ratio}")
+        print(f"    Classes Minoritárias: {minority_classes}")
+    print(f"  WandB: {'Habilitado' if wandb_enabled else 'Desabilitado'}")
+    if wandb_enabled:
+        print(f"    Project: {wandb_project}")
+        if wandb_entity:
+            print(f"    Entity: {wandb_entity}")
+    print(f"  Save Path: {save_path}")
     print(f"{'-' * 60}\n")
 
     checkpoint_manager = GridSearchCheckpointManager(save_path)
 
     combinations, param_names = generate_random_combinations(
-        param_grid, max_combinations
+        param_grid, max_combinations, random_state=random_seed
     )
     total_combinations = len(combinations)
 
     print(f"Geradas {total_combinations} combinações aleatórias\n")
 
-    executed_indices, results = checkpoint_manager.load_execution_state(architecture_name)
+    checkpoint_key = f"{architecture_name}_{model_type}"
+    executed_indices, results = checkpoint_manager.load_execution_state(checkpoint_key)
 
     remaining_indices = [i for i in range(total_combinations) if i not in executed_indices]
 
@@ -310,17 +386,18 @@ def search_best_hyperparameters_holdout(
             train_dataset,
             train_ratio,
             val_ratio,
-            random_state=42 + rep
+            random_state=random_seed + rep
         )
 
         if augment_minority:
-            print(f"\nAplicando augmentação na classe minoritária...")
+            print(f"  Aplicando augmentação nas classes minoritárias ({model_type_display})...")
+
             train_split = augment_minority_class(
                 train_split=train_split,
                 target_strategy=minority_target_strategy,
                 target_ratio=min(minority_target_ratio, 0.6),
                 architecture_name=architecture_name,
-                minority_class=0,  # Demented
+                minority_classes=minority_classes,
             )
 
         all_splits.append((train_split, val_split))
@@ -334,36 +411,47 @@ def search_best_hyperparameters_holdout(
         params = dict(zip(param_names, combination))
 
         print(f"\n{'-' * 60}")
-        print(f"COMBINAÇÃO [{idx + 1}/{total_combinations}] #{idx}")
+        print(f"COMBINAÇÃO [{idx + 1}/{total_combinations}] #{idx} ({model_type_display})")
         print(f"{'-' * 60}")
-        print(f"Parâmetros: {params}")
-        print(f"Progresso: {len(executed_indices)}/{total_combinations} combinações executadas")
+        print(f"Parâmetros:")
+        for param, value in params.items():
+            print(f"  {param}: {value}")
+        print(f"Progresso: {len(executed_indices)}/{total_combinations} executadas")
         print(f"{'-' * 60}\n")
 
-        run_name = f"{architecture_name}_combo_{idx + 1}"
-        init_wandb_run(
-            project_name=wandb_project,
-            run_name=run_name,
-            config={
-                "architecture": architecture_name,
-                "combination_index": idx,
-                **params,
-                "n_repetitions": n_repetitions,
-                "num_epochs": num_epochs,
-                "train_ratio": train_ratio,
-                "val_ratio": val_ratio,
-                "augment_minority": augment_minority,
-                "minority_strategy": minority_target_strategy if augment_minority else None
-            },
-            entity=wandb_entity,
-            tags=["grid_search", architecture_name],
-            group=f"{architecture_name}_search"
-        )
+        if wandb_enabled:
+            run_name = f"{architecture_name}_combo_{idx + 1}_{model_type}"
+            init_wandb_run(
+                project_name=wandb_project,
+                run_name=run_name,
+                config={
+                    "architecture": architecture_name,
+                    "model_type": model_type_display,
+                    "combination_index": idx,
+                    "num_classes": num_classes,
+                    "class_names": class_names,
+                    **params,
+                    "n_repetitions": n_repetitions,
+                    "num_epochs": num_epochs,
+                    "patience": early_stopping_patience,
+                    "train_ratio": train_ratio,
+                    "val_ratio": val_ratio,
+                    "augment_minority": augment_minority,
+                    "minority_strategy": minority_target_strategy if augment_minority else None,
+                    "minority_classes": minority_classes if augment_minority else None,
+                    "stratify": stratify
+                },
+                entity=wandb_entity,
+                tags=["grid_search", architecture_name, model_type],
+                group=f"{architecture_name}_search_{model_type}"
+            )
 
         repetition_results = []
 
         for rep in range(n_repetitions):
+            print(f"\n{'-' * 40}")
             print(f"REPETIÇÃO {rep + 1}/{n_repetitions}")
+            print(f"{'-' * 40}\n")
 
             try:
                 train_split, val_split = all_splits[rep]
@@ -378,8 +466,7 @@ def search_best_hyperparameters_holdout(
                     class_names=class_names,
                     device=device,
                     train_dataset=train_split,
-                    focal_gamma=2.0,
-                    label_smoothing=0.1
+                    label_smoothing=None
                 )
 
                 rep_result = train_holdout_model(
@@ -389,22 +476,21 @@ def search_best_hyperparameters_holdout(
                     train_split=train_split,
                     val_split=val_split,
                     device=device,
-                    class_names=class_names,
                     hyperparams=params,
-                    num_epochs=num_epochs,
-                    early_stopping_patience=early_stopping_patience,
                     architecture_name=architecture_name,
                     use_gradient_clipping=True,
                     max_grad_norm=1.0,
-                    repetition_number=rep + 1
+                    repetition_number=rep + 1,
+                    is_multiclass=(model_type == 'multiclass')
                 )
 
                 rep_result['repetition'] = rep + 1
+                rep_result['model_type'] = model_type
                 repetition_results.append(rep_result)
 
             except Exception as e:
-                print(f"ERRO na Repetição {rep + 1}:")
-                print(f"Detalhe do Erro: {e}")
+                print(f"\nERRO na Repetição {rep + 1}:")
+                print(f"   {str(e)}")
                 import traceback
                 traceback.print_exc()
                 continue
@@ -413,51 +499,63 @@ def search_best_hyperparameters_holdout(
             results = improved_combination_evaluation(
                 repetition_results=repetition_results,
                 params=params,
-                idx=idx,
+                index_combination=idx,
                 architecture_name=architecture_name,
                 checkpoint_manager=checkpoint_manager,
                 executed_indices=executed_indices,
                 results=results,
-                total_combinations=total_combinations
+                total_combinations=total_combinations,
+                model_type=model_type
             )
 
-        finish_wandb_run()
+        if wandb_enabled:
+            finish_wandb_run()
 
     results = final_search_summary(
         results=results,
         executed_indices=executed_indices,
         total_combinations=total_combinations,
         architecture_name=architecture_name,
-        checkpoint_manager=checkpoint_manager
+        checkpoint_manager=checkpoint_manager,
+        model_type=model_type
     )
 
     return results
 
 def run_grid_search(
         train_dataset,
-        classes: List[str],
-        architectures: Optional[List[str]] = None,
-        save_path: str = './shared/logs/experiments',
-        wandb_project: str = "alzheimer-detection",
-        wandb_entity: Optional[str] = None
+        model_type: str = 'binary',
+        architectures: Optional[List[str]] = None
 ) -> Dict:
+    hyperparams_config = load_hyperparameters_config()
+    config = get_model_config(model_type)
+
+    class_names = config['model']['class_names']
+
+    model_type_display = "BINÁRIO" if model_type == 'binary' else "MULTICLASSE"
+
     print(f"\n{'=' * 80}")
-    print("INICIANDO BUSCA DE HIPERPARÂMETROS PARA TODAS AS ARQUITETURAS")
+    print(f"INICIANDO BUSCA DE HIPERPARÂMETROS ({model_type_display})")
     print(f"{'=' * 80}\n")
 
     if architectures is None:
-        architectures = [
-            'resnext50_32x4d',
-            'convnext_tiny',
-            'efficientnetv2_s',
-            'densenet121',
-            'vit_b_16',
-            'swin_v2_tiny',
-        ]
+        architectures = (
+                hyperparams_config['supported_architectures']['cnn'] +
+                hyperparams_config['supported_architectures']['transformer']
+        )
 
-    print(f"Arquiteturas a serem testadas: {architectures}\n")
+    print(f"Arquiteturas a serem testadas: {architectures}")
+    print(f"Tipo de Modelo: {model_type_display}")
+    print(f"Classes: {class_names}\n")
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    hardware_config = hyperparams_config.get('hardware', {})
+    device_config = hardware_config.get('device', 'cuda')
+
+    if device_config == 'auto':
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    else:
+        device = torch.device(device_config)
+
     print(f"Device: {device}\n")
 
     all_results = {}
@@ -465,54 +563,31 @@ def run_grid_search(
     for arch in architectures:
         try:
             print(f"\n{'-' * 80}")
-            print(f"INICIANDO: {arch.upper()}")
+            print(f"INICIANDO: {arch.upper()} ({model_type_display})")
             print(f"{'-' * 80}\n")
 
             param_grid = get_architecture_specific_param_grid(arch)
-
-            if arch in ['vit_b_16', 'swin_v2_tiny']:
-                num_epochs = 500
-                patience = 50
-                max_combinations = 200
-            else:
-                num_epochs = 350
-                patience = 30
-                max_combinations = 300
 
             results = search_best_hyperparameters_holdout(
                 param_grid=param_grid,
                 architecture_name=arch,
                 device=device,
                 train_dataset=train_dataset,
-                class_names=classes,
-                max_combinations=max_combinations,
-                num_epochs=num_epochs,
-                early_stopping_patience=patience,
+                model_type=model_type,
                 n_repetitions=1,
-                train_ratio=0.7,
-                val_ratio=0.3,
-                save_path=save_path,
-                augment_minority=True,
-                minority_target_strategy='ratio',
-                minority_target_ratio=0.6,
-                wandb_project=wandb_project,
-                wandb_entity=wandb_entity
+                max_combinations=None
             )
 
             all_results[arch] = results
 
-            print(f"\n{'-' * 80}")
-            print(f"{arch.upper()} CONCLUÍDO!")
-            print(f"{'-' * 80}")
-
         except Exception as e:
-            print(f"ERRO COM {arch.upper()}: {e}\n")
+            print(f"\nERRO COM {arch.upper()}: {e}\n")
             import traceback
             traceback.print_exc()
             continue
 
     print(f"\n{'=' * 80}")
-    print("BUSCA CONCLUÍDA PARA TODAS AS ARQUITETURAS")
+    print(f"BUSCA DE HIPERPARÂMETROS CONCLUÍDA ({model_type_display})")
     print(f"{'=' * 80}\n")
 
     return all_results

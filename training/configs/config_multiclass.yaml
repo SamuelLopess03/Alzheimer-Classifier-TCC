@@ -4,15 +4,15 @@ model:
   name: "multiclass_classifier"
   num_classes: 3
   class_names:
-    - "Very Mild Dementia"
     - "Mild Dementia"
     - "Moderate Dementia"
+    - "Very Mild Dementia"
 
   # Mapeamento de classes do dataset original
   class_mapping:
-    1: 0  # Very Mild Dementia -> classe 0
-    2: 1  # Mild Dementia -> classe 1
-    3: 2  # Moderate Dementia -> classe 2
+    1: 0  # Mild Dementia -> classe 0
+    2: 1  # Moderate Dementia -> classe 1
+    3: 2  # Very Mild Dementia -> classe 2
 
   # Filtrar apenas imagens com demência
   filter_non_demented: true
@@ -28,12 +28,12 @@ data:
   random_seed: 42
 
   # Classes minoritárias para augmentação
-  minority_classes: [0, 1]  # Mild e Moderate (geralmente minoritárias)
+  minority_classes: [0, 1]  # Mild e Moderate 
 
   # Estratégia de balanceamento
   minority_augmentation:
     enabled: true
-    strategy: "ratio"  # balance, ratio, proportional
+    strategy: "proportional"  # balance, ratio, proportional
     target_ratio: 0.6  # Apenas usado se strategy = "ratio"
 
 training:
