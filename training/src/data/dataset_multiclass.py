@@ -3,17 +3,29 @@ import shutil
 from typing import List, Tuple
 from torchvision import datasets
 
-from training.src.utils import split_dataset_train_test
+from training.src.utils import split_dataset_train_test, load_multiclass_config
 
 def prepare_dataset_multiclass(
-        output_base_path: str,
-        demented_classes: List[str],
-        train_ratio: float = 0.8,
-        random_state: int = 42
+        output_base_path: str = "./shared/data"
 ) -> Tuple[datasets.ImageFolder, datasets.ImageFolder, List[str]]:
+    config = load_multiclass_config()
+
+    data_config = config['data']
+    model_config = config['model']
+
+    train_ratio = data_config['split_ratios']['train']
+    random_state = data_config['random_seed']
+    class_names = model_config['class_names']
+    filter_non_demented = model_config.get('filter_non_demented', True)
+
     print(f"{'-' * 60}")
-    print("CRIANDO DATASET MULTICLASSE (3 TIPOS DE DEMÊNCIA)")
-    print(f"{'-' * 60}\n")
+    print("INICIANDO ETAPA DE PREPARAÇÃO DO DATASET MULTICLASSE (NÍVEIS DE DEMÊNCIA)")
+    print(f"{'-' * 60}")
+    print(f"Configurações:")
+    print(f"   Train Ratio: {train_ratio}")
+    print(f"   Random Seed: {random_state}")
+    print(f"   Classes: {class_names}")
+    print(f"   Filtrar Non Demented: {filter_non_demented}\n")
 
     train_path = os.path.join(output_base_path, "splits/multiclass/train")
     test_path = os.path.join(output_base_path, "splits/multiclass/test")
@@ -27,6 +39,10 @@ def prepare_dataset_multiclass(
         print(f"   Dataset de teste: {len(test_dataset)} imagens")
         print(f"   Classes: {train_dataset.classes}")
 
+        print(f"\n{'-' * 60}")
+        print("PREPARAÇÃO DO DATASET MULTICLASSE CONCLUÍDA")
+        print(f"{'-' * 60}\n")
+
         return train_dataset, test_dataset, train_dataset.classes
 
     raw_dataset_path = os.path.join(output_base_path, "raw")
@@ -34,12 +50,15 @@ def prepare_dataset_multiclass(
     os.makedirs(temp_path, exist_ok=True)
 
     stats = {}
+    total_images = 0
 
-    for dementia_class in demented_classes:
+    print("Copiando imagens das classes de demência...\n")
+
+    for dementia_class in class_names:
         class_path = os.path.join(raw_dataset_path, dementia_class)
 
         if not os.path.exists(class_path):
-            print(f"Classe {dementia_class} não encontrada, pulando...\n")
+            print(f"Classe {dementia_class} não encontrada, pulando...")
             continue
 
         output_class_path = os.path.join(temp_path, dementia_class)
@@ -54,19 +73,29 @@ def prepare_dataset_multiclass(
             shutil.copy2(src, dst)
 
         stats[dementia_class] = len(images)
-        print(f"{dementia_class}: {len(images)} imagens copiadas\n")
+        total_images += len(images)
+        print(f"{dementia_class}: {len(images)} imagens copiadas")
+
+    print(f"\nDividindo dataset (train: {train_ratio * 100:.0f}%, test: {(1 - train_ratio) * 100:.0f}%)...\n")
 
     train_dataset, test_dataset = split_dataset_train_test(
         dataset_path=temp_path,
-        classes=demented_classes,
+        classes=class_names,
         train_ratio=train_ratio,
         output_train_path=train_path,
         output_test_path=test_path,
-        random_state=random_state
+        random_state=random_state,
+        stratify=data_config['stratify']
     )
 
+    try:
+        shutil.rmtree(temp_path)
+        print(f"\nPasta temporária removida: {temp_path}")
+    except Exception as e:
+        print(f"\nErro ao remover pasta temporária: {e}")
+
     print(f"\n{'-' * 60}")
-    print("DATASET MULTICLASSE CRIADO COM SUCESSO")
+    print("PREPARAÇÃO DO DATASET MULTICLASSE CONCLUÍDA")
     print(f"{'-' * 60}\n")
 
-    return train_dataset, test_dataset, demented_classes
+    return train_dataset, test_dataset, class_names

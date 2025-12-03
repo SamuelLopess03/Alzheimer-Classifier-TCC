@@ -1,0 +1,76 @@
+# Configurações para Modelo Multiclasse: Níveis de Demência
+
+model:
+  name: "multiclass_classifier"
+  num_classes: 3
+  class_names:
+    - "Very Mild Dementia"
+    - "Mild Dementia"
+    - "Moderate Dementia"
+
+  # Mapeamento de classes do dataset original
+  class_mapping:
+    1: 0  # Very Mild Dementia -> classe 0
+    2: 1  # Mild Dementia -> classe 1
+    3: 2  # Moderate Dementia -> classe 2
+
+  # Filtrar apenas imagens com demência
+  filter_non_demented: true
+
+data:
+  dataset_type: "multiclass"
+  data_path: "./shared/data/splits/multiclass"
+  split_ratios:
+    train: 0.8
+    val: 0.2
+    test: 0.2
+  stratify: true
+  random_seed: 42
+
+  # Classes minoritárias para augmentação
+  minority_classes: [0, 1]  # Mild e Moderate (geralmente minoritárias)
+
+  # Estratégia de balanceamento
+  minority_augmentation:
+    enabled: true
+    strategy: "ratio"  # balance, ratio, proportional
+    target_ratio: 0.6  # Apenas usado se strategy = "ratio"
+
+training:
+  epochs: 500
+  patience: 50  # Early stopping
+  min_delta: 0.001
+
+  # Scheduler
+  scheduler:
+    type: "reduce_on_plateau"  # step, cosine, reduce_on_plateau
+    params:
+      mode: "max"
+      factor: 0.5
+      patience: 5
+      min_lr: 1e-6
+
+validation:
+  eval_frequency: 1  # Avaliar a cada N épocas
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1_score"
+    - "confusion_matrix"
+    - "roc_auc"
+
+checkpoint:
+  save_path: "./shared/models/multiclass/checkpoints"
+  save_best_only: true
+  monitor: "val_f1_score"
+  mode: "max"
+  save_frequency: 5  # Salvar checkpoint a cada N épocas
+
+logging:
+  save_path: "./shared/logs/multiclass"
+  wandb:
+    enabled: true
+    project: "alzheimer-multiclass"
+    entity: "samuel89-ufc-ai"
+    run_name: null  # Auto-gerado se null

@@ -124,53 +124,52 @@ def split_dataset_train_test(
         train_ratio: float,
         output_train_path: str,
         output_test_path: str,
-        random_state: int
+        random_state: int = 42,
+        stratify: bool = True
 ) -> Tuple[datasets.ImageFolder, datasets.ImageFolder]:
     print("\n" + "-" * 60)
     print(f"INICIANDO DIVISÃO DO DATASET ({int(train_ratio * 100)}% TREINO / {int((1 - train_ratio) * 100)}% TESTE)")
     print("-" * 60 + "\n")
+    print(f"Dividindo dataset com stratification={stratify}...")
 
-    os.makedirs(output_train_path, exist_ok=True)
-    os.makedirs(output_test_path, exist_ok=True)
+    all_files = []
+    all_labels = []
 
-    for class_name in classes:
+    for class_idx, class_name in enumerate(classes):
         class_path = os.path.join(dataset_path, class_name)
-
         if not os.path.exists(class_path):
-            print(f"Classe {class_name} não encontrada em {class_path}\n")
             continue
 
         images = [f for f in os.listdir(class_path)
                   if f.lower().endswith(('.jpg', '.jpeg'))]
 
-        if not images:
-            print(f"Nenhuma imagem encontrada para a classe {class_name}\n")
-            continue
+        for img in images:
+            all_files.append((class_name, img))
+            all_labels.append(class_idx)
 
-        train_images, test_images = train_test_split(
-            images,
-            train_size=train_ratio,
+    if stratify:
+        train_files, test_files = train_test_split(
+            all_files,
+            test_size=(1 - train_ratio),
             random_state=random_state,
-            shuffle=True
+            stratify=all_labels
+        )
+    else:
+        train_files, test_files = train_test_split(
+            all_files,
+            test_size=(1 - train_ratio),
+            random_state=random_state
         )
 
-        train_class_path = os.path.join(output_train_path, class_name)
-        test_class_path = os.path.join(output_test_path, class_name)
+    for split_files, output_path in [(train_files, output_train_path),
+                                     (test_files, output_test_path)]:
+        for class_name in classes:
+            os.makedirs(os.path.join(output_path, class_name), exist_ok=True)
 
-        os.makedirs(train_class_path, exist_ok=True)
-        os.makedirs(test_class_path, exist_ok=True)
-
-        for image in train_images:
-            src = os.path.join(class_path, image)
-            dst = os.path.join(train_class_path, image)
+        for class_name, img in split_files:
+            src = os.path.join(dataset_path, class_name, img)
+            dst = os.path.join(output_path, class_name, img)
             shutil.copy2(src, dst)
-
-        for image in test_images:
-            src = os.path.join(class_path, image)
-            dst = os.path.join(test_class_path, image)
-            shutil.copy2(src, dst)
-
-        print(f"Classe {class_name}: {len(train_images)} treino, {len(test_images)} teste\n")
 
     train_dataset = datasets.ImageFolder(root=output_train_path, transform=None)
     test_dataset = datasets.ImageFolder(root=output_test_path, transform=None)
@@ -179,12 +178,6 @@ def split_dataset_train_test(
     print(f"  Dataset de treino: {len(train_dataset)} imagens")
     print(f"  Dataset de teste: {len(test_dataset)} imagens")
     print(f"  Classes: {train_dataset.classes}")
-
-    try:
-        shutil.rmtree(dataset_path)
-        print(f"\nPasta temporária removida: {dataset_path}")
-    except Exception as e:
-        print(f"\nErro ao remover pasta temporária: {e}")
 
     print("\n" + "-" * 60)
     print("DIVISÃO DO DATASET CONCLUÍDA")
