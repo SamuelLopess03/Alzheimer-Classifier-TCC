@@ -114,7 +114,7 @@ optimizer_config:
       transformer: 0.01
 
 hardware:
-  device: "cuda"  # cuda, cpu, auto
+  device: "cpu"  # cuda, cpu, auto
   mixed_precision: true
   num_workers: 4
   pin_memory: true
@@ -124,7 +124,7 @@ logging:
 
 # Resultados
 results:
-  save_path: "./shared/logs/experiments"
+  save_path: "../../shared/logs/experiments"
   top_k_models: 3
   save_checkpoints: true
   log_model_summary: true

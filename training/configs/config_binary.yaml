@@ -16,7 +16,7 @@ model:
 
 data:
   dataset_type: "binary"
-  data_path: "./shared/data/splits/binary"
+  data_path: "../../shared/data/splits/binary"
   split_ratios:
     train: 0.8
     val: 0.2
@@ -56,14 +56,14 @@ validation:
     - "roc_auc"
 
 checkpoint:
-  save_path: "./shared/models/binary/checkpoints"
+  save_path: "../../shared/models/binary/checkpoints"
   save_best_only: true
   monitor: "val_f1_score"
   mode: "max"
   save_frequency: 5  # Salvar checkpoint a cada N épocas
 
 logging:
-  save_path: "./shared/logs/binary"
+  save_path: "../../shared/logs/binary"
   wandb:
     enabled: true
     project: "alzheimer-binary"

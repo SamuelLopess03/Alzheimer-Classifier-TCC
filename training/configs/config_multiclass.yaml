@@ -19,7 +19,7 @@ model:
 
 data:
   dataset_type: "multiclass"
-  data_path: "./shared/data/splits/multiclass"
+  data_path: "../../shared/data/splits/multiclass"
   split_ratios:
     train: 0.8
     val: 0.2
@@ -61,14 +61,14 @@ validation:
     - "roc_auc"
 
 checkpoint:
-  save_path: "./shared/models/multiclass/checkpoints"
+  save_path: "../../shared/models/multiclass/checkpoints"
   save_best_only: true
   monitor: "val_f1_score"
   mode: "max"
   save_frequency: 5  # Salvar checkpoint a cada N épocas
 
 logging:
-  save_path: "./shared/logs/multiclass"
+  save_path: "../../shared/logs/multiclass"
   wandb:
     enabled: true
     project: "alzheimer-multiclass"
