@@ -202,21 +202,27 @@ def create_synthetic_augmentation_for_minority(
                 rotate=rotate,
                 p=cfg['affine']['probability']
             ),
-            alb.RandomToneCurve(
-                scale=cfg['random_tone_curve']['scale'],
-                p=cfg['random_tone_curve']['probability']
+            # Transformações de intensidade para grayscale
+            alb.Posterize(
+                num_bits=6,
+                p=0.2
             ),
-            alb.ColorJitter(
-                brightness=cfg['color_jitter']['brightness'],
-                contrast=cfg['color_jitter']['contrast'],
-                saturation=cfg['color_jitter']['saturation'],
-                hue=cfg['color_jitter']['hue'],
-                p=cfg['color_jitter']['probability']
+            # Distorções geométricas
+            alb.GridDistortion(
+                num_steps=5,
+                distort_limit=0.3,
+                p=0.3
             ),
+            # Ruído
             alb.GaussNoise(
                 std_range=std_range,
                 mean_range=mean_range,
                 p=cfg['gauss_noise']['probability']
+            ),
+            alb.MultiplicativeNoise(
+                multiplier=(0.9, 1.1),
+                per_channel=False,
+                p=0.2
             ),
         ]
     else:
@@ -231,8 +237,6 @@ def create_synthetic_augmentation_for_minority(
         rotate = (float(cfg['affine']['rotate'][0]), float(cfg['affine']['rotate'][1]))
         std_range = (float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1]))
         mean_range = (float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1]))
-        color_shift = (float(cfg['iso_noise']['color_shift'][0]), float(cfg['iso_noise']['color_shift'][1]))
-        intensity = (float(cfg['iso_noise']['intensity'][0]), float(cfg['iso_noise']['intensity'][1]))
 
         augmentations = [
             alb.VerticalFlip(p=cfg['vertical_flip']['probability']),
@@ -245,33 +249,44 @@ def create_synthetic_augmentation_for_minority(
                 rotate=rotate,
                 p=cfg['affine']['probability']
             ),
+            # Transformações geométricas avançadas
             alb.ElasticTransform(
                 alpha=cfg['elastic_transform']['alpha'],
                 sigma=cfg['elastic_transform']['sigma'],
                 p=cfg['elastic_transform']['probability']
             ),
-            alb.RandomToneCurve(
-                scale=cfg['random_tone_curve']['scale'],
-                p=cfg['random_tone_curve']['probability']
+            alb.Perspective(
+                scale=(0.05, 0.1),
+                p=0.2
             ),
+            # Equalização de histograma
             alb.Equalize(p=cfg['equalize']['probability']),
-            alb.ColorJitter(
-                brightness=cfg['color_jitter']['brightness'],
-                contrast=cfg['color_jitter']['contrast'],
-                saturation=cfg['color_jitter']['saturation'],
-                hue=cfg['color_jitter']['hue'],
-                p=cfg['color_jitter']['probability']
+            # Efeitos de textura e bordas
+            alb.Emboss(
+                alpha=(0.2, 0.5),
+                strength=(0.2, 0.7),
+                p=0.2
             ),
+            # Blur especializado
+            alb.MedianBlur(
+                blur_limit=5,
+                p=0.2
+            ),
+            alb.MotionBlur(
+                blur_limit=7,
+                p=0.15
+            ),
+            # Ruídos
             alb.GaussNoise(
                 std_range=std_range,
                 mean_range=mean_range,
                 p=cfg['gauss_noise']['probability']
             ),
-            alb.ISONoise(
-                color_shift=color_shift,
-                intensity=intensity,
-                p=cfg['iso_noise']['probability']
-            ),
+            alb.MultiplicativeNoise(
+                multiplier=(0.9, 1.1),
+                per_channel=False,
+                p=0.2
+            )
         ]
 
     return alb.Compose(augmentations)

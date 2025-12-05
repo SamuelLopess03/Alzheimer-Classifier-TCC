@@ -201,7 +201,7 @@ def create_model_with_architecture(
     dropout = hyperparams['dropout']
     optimizer_name = hyperparams['optimizer']
     loss_function = hyperparams['loss_function']
-    lr = hyperparams['learning_rate']
+    lr = float(hyperparams['learning_rate'])
 
     num_classes = len(class_names)
 
@@ -255,7 +255,7 @@ def create_model_with_architecture(
         optimizer = optim.Adam(
             trainable_params,
             lr=lr,
-            weight_decay=opt_cfg['weight_decay']
+            weight_decay=float(opt_cfg['weight_decay'])
         )
         print(f"Optimizer: Adam (lr={lr}, wd={opt_cfg['weight_decay']})\n")
 
@@ -264,13 +264,13 @@ def create_model_with_architecture(
             trainable_params,
             lr=lr,
             momentum=opt_cfg['momentum'],
-            weight_decay=opt_cfg['weight_decay']
+            weight_decay=float(opt_cfg['weight_decay'])
         )
         print(f"Optimizer: SGD (lr={lr}, momentum={opt_cfg['momentum']}, wd={opt_cfg['weight_decay']})\n")
 
     elif optimizer_name.lower() == 'adamw':
         arch_type = 'transformer' if is_transformer else 'cnn'
-        wd = opt_cfg['weight_decay'][arch_type]
+        wd = float(opt_cfg['weight_decay'][arch_type])
         optimizer = optim.AdamW(
             trainable_params,
             lr=lr,
