@@ -4,13 +4,13 @@ from torchvision import datasets as tv_datasets
 from collections import Counter
 
 from training.src.training import run_grid_search
-from training.src.utils import load_binary_config
+from training.src.utils import load_multiclass_config
 
 def main():
-    config = load_binary_config()
+    config = load_multiclass_config()
 
     print("\n" + "=" * 80)
-    print("TREINAMENTO DO MODELO BINÁRIO: NON DEMENTED vs DEMENTED")
+    print("TREINAMENTO DO MODELO MULTICLASSE: NÍVEIS DE DEMÊNCIA")
     print("=" * 80)
     print(f"\nConfiguração Carregada:")
     print(f"  Classes: {config['model']['class_names']}")
@@ -22,7 +22,7 @@ def main():
     print("=" * 80 + "\n")
 
     base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'shared/data')
-    train_path = os.path.join(base_path, 'splits/binary/train')
+    train_path = os.path.join(base_path, 'splits/multiclass/train')
 
     if not os.path.exists(train_path):
         print(f"Erro: Dataset não encontrado em {train_path}")
@@ -55,7 +55,7 @@ def main():
 
     all_results = run_grid_search(
         train_dataset=train_dataset,
-        model_type='binary'
+        model_type='multiclass'
     )
 
     if all_results:
@@ -98,13 +98,16 @@ def main():
             metrics = best_result['best_metrics']
             print(f"    Precision: {metrics.get('mean_precision', 0) * 100:.2f}%")
             print(f"    Recall: {metrics.get('mean_recall', 0) * 100:.2f}%")
-            print(f"    Specificity: {metrics.get('mean_specificity', 0) * 100:.2f}%")
             print(f"    MCC: {metrics.get('mean_mcc', 0):.4f}")
+
+            print(f"\n  Desempenho por Classe:")
+            for class_name in config['model']['class_names']:
+                print(f"    {class_name}")
     else:
-        print("Nenhum resultado válido obtido!\n")
+        print("Nenhum resultado válido obtido!")
 
     print("\n" + "=" * 80)
-    print("TREINAMENTO DO MODELO BINÁRIO CONCLUÍDO")
+    print("TREINAMENTO DO MODELO MULTICLASSE CONCLUÍDO")
     print("=" * 80 + "\n")
 
 if __name__ == '__main__':
