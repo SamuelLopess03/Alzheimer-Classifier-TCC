@@ -1,7 +1,9 @@
 import wandb
+import os
 import numpy as np
 from typing import Dict, List, Optional, Any
 from pathlib import Path
+from dotenv import load_dotenv
 
 from training.src.evaluation import aggregate_repetition_metrics
 
@@ -12,23 +14,61 @@ def init_wandb_run(
         entity: Optional[str] = None,
         tags: Optional[List[str]] = None,
         notes: Optional[str] = None,
-        group: Optional[str] = None
-) -> wandb.Run:
-    run = wandb.init(
-        project=project_name,
-        name=run_name,
-        config=config,
-        entity=entity,
-        tags=tags or [],
-        notes=notes,
-        group=group,
-        reinit=True
-    )
+        group: Optional[str] = None,
+        save_code: bool = False,
+        directory: Optional[str] = None
+) -> Optional[wandb.Run]:
+    load_dotenv()
 
-    print(f"\nW&B run initialized: {run.name}")
-    print(f"  URL: {run.url}\n")
+    api_key = os.getenv('WANDB_API_KEY')
 
-    return run
+    os.environ['WANDB_SILENT'] = 'true'
+    os.environ['WANDB_CONSOLE'] = 'off'
+
+    if directory is None:
+        os.environ['WANDB_DIR'] = os.path.join(os.getcwd(), 'wandb_temp')
+        os.environ['WANDB_CACHE_DIR'] = os.path.join(os.getcwd(), 'wandb_temp', 'cache')
+
+    try:
+        if not wandb.api.api_key:
+            wandb.login(key=api_key, relogin=False)
+
+    except Exception as e:
+        print(f"\nErro ao fazer login no WandB: {e}")
+        return None
+
+    try:
+        run = wandb.init(
+            project=project_name,
+            name=run_name,
+            config=config,
+            entity=entity,
+            tags=tags or [],
+            notes=notes,
+            group=group,
+            resume='allow',
+            settings=wandb.Settings(
+                start_method='thread',
+                console='off',
+                quiet=True,
+            ),
+            save_code=save_code,
+            dir=directory
+        )
+
+        print(f"\nW&B run inicializado: {run.name}")
+        print(f"  URL: {run.url}")
+        print(f"  Project: {project_name}")
+        if entity:
+            print(f"  Entity: {entity}")
+        print()
+
+        return run
+
+    except Exception as e:
+        print(f"\nErro ao inicializar WandB run: {e}")
+        print("Continuando sem logging do WandB...\n")
+        return None
 
 def log_metrics(
         metrics: Dict[str, Any],
@@ -193,15 +233,16 @@ def summarize_wandb_repetitions(
 
     return result
 
-def finish_wandb_run(
-        summary_dict: Optional[Dict] = None
-):
-    if summary_dict:
-        for key, value in summary_dict.items():
-            wandb.run.summary[key] = value
 
-    wandb.finish()
-    print("\nW&B run finished\n")
+def finish_wandb_run(quiet: bool = True):
+    try:
+        if wandb.run is not None:
+            wandb.finish(quiet=quiet)
+            if not quiet:
+                print("\nWandB run finalizado")
+    except Exception as e:
+        if not quiet:
+            print(f"\nErro ao finalizar WandB run: {e}")
 
 def log_model_artifact(
         model_path: Path,

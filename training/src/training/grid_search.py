@@ -2,9 +2,11 @@ import torch
 import numpy as np
 import wandb
 import json
+import os
 import itertools
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Set
+from torchvision.datasets import ImageFolder
 
 from training.src.models import (
     create_model_with_architecture,
@@ -283,7 +285,7 @@ def search_best_hyperparameters_holdout(
         param_grid: Dict,
         architecture_name: str,
         device: torch.device,
-        train_dataset,
+        train_dataset: ImageFolder,
         model_type: str = 'binary',
         n_repetitions: int = 1,
         max_combinations: Optional[int] = None
@@ -421,7 +423,10 @@ def search_best_hyperparameters_holdout(
 
         if wandb_enabled:
             run_name = f"{architecture_name}_combo_{idx + 1}_{model_type}"
-            init_wandb_run(
+
+            wandb_dir = os.path.join(save_path, 'wandb_logs')
+
+            run = init_wandb_run(
                 project_name=wandb_project,
                 run_name=run_name,
                 config={
@@ -443,8 +448,13 @@ def search_best_hyperparameters_holdout(
                 },
                 entity=wandb_entity,
                 tags=["grid_search", architecture_name, model_type],
-                group=f"{architecture_name}_search_{model_type}"
+                group=f"{architecture_name}_search_{model_type}",
+                save_code=False,
+                directory=wandb_dir
             )
+
+            if run is None:
+                wandb_enabled = False
 
         repetition_results = []
 
@@ -523,7 +533,7 @@ def search_best_hyperparameters_holdout(
     return results
 
 def run_grid_search(
-        train_dataset,
+        train_dataset: ImageFolder,
         model_type: str = 'binary',
         architectures: Optional[List[str]] = None
 ) -> Dict:

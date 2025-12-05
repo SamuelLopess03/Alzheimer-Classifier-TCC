@@ -4,3 +4,10 @@ shared/data
 
 kaggle.json
 
+.env
+
+# WandB
+wandb/
+wandb_temp/
+*.wandb
+.wandb/
