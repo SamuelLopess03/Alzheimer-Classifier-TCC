@@ -1,8 +1,7 @@
 import wandb
 import os
 import numpy as np
-from typing import Dict, List, Optional, Any
-from pathlib import Path
+from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
 from training.src.evaluation import aggregate_repetition_metrics
@@ -70,60 +69,82 @@ def init_wandb_run(
         print("Continuando sem logging do WandB...\n")
         return None
 
-def log_metrics(
-        metrics: Dict[str, Any],
-        step: Optional[int] = None,
-        commit: bool = True
-):
-    wandb.log(metrics, step=step, commit=commit)
-
 def log_confusion_matrix_figure(
         fig,
         key: str = "confusion_matrix",
         step: Optional[int] = None
 ):
-    wandb.log({key: wandb.Image(fig)}, step=step)
+    if wandb.run is not None:
+        wandb.log({key: wandb.Image(fig)}, step=step)
 
 def log_roc_curve_figure(
         fig,
         key: str = "roc_curve",
         step: Optional[int] = None
 ):
-    wandb.log({key: wandb.Image(fig)}, step=step)
+    if wandb.run is not None:
+        wandb.log({key: wandb.Image(fig)}, step=step)
 
 def create_repetition_summary_table(
         repetition_results: List[Dict],
-        aggregated: Dict
+        aggregated: Dict,
+        is_multiclass: bool = False
 ) -> wandb.Table:
     repetition_summary_data = []
 
     for i, rep_result in enumerate(repetition_results):
         best_m = rep_result.get('best_metrics', {})
 
-        repetition_summary_data.append({
-            'Repetition': str(i + 1),
-            'Balanced Acc': f"{best_m.get('balanced_accuracy', 0.0) * 100:.2f}%",
-            'Accuracy': f"{best_m.get('accuracy', 0.0) * 100:.2f}%",
-            'F1-Score': f"{rep_result.get('best_f1_score', 0.0) * 100:.2f}%",
-            'Specificity': f"{best_m.get('specificity', 0.0) * 100:.2f}%",
-            'Precision': f"{best_m.get('precision', 0.0) * 100:.2f}%",
-            'Recall': f"{best_m.get('recall', 0.0) * 100:.2f}%",
-            'MCC': f"{best_m.get('matthews_correlation_coefficient', 0.0):.4f}",
-            'Val Loss': f"{best_m.get('val_loss', 0.0):.4f}",
-        })
+        if not is_multiclass:
+            repetition_summary_data.append({
+                'Repetition': str(i + 1),
+                'Balanced Acc': f"{best_m.get('balanced_accuracy', 0.0) * 100:.2f}%",
+                'Accuracy': f"{best_m.get('accuracy', 0.0) * 100:.2f}%",
+                'F1-Score': f"{rep_result.get('best_f1_score', 0.0) * 100:.2f}%",
+                'Specificity': f"{best_m.get('specificity', 0.0) * 100:.2f}%",
+                'Precision': f"{best_m.get('precision', 0.0) * 100:.2f}%",
+                'Recall': f"{best_m.get('recall', 0.0) * 100:.2f}%",
+                'MCC': f"{best_m.get('matthews_correlation_coefficient', 0.0):.4f}",
+                'Val Loss': f"{best_m.get('val_loss', 0.0):.4f}",
+            })
+        else:
+            repetition_summary_data.append({
+                'Repetition': str(i + 1),
+                'Balanced Acc': f"{best_m.get('balanced_accuracy', 0.0) * 100:.2f}%",
+                'Accuracy': f"{best_m.get('accuracy', 0.0) * 100:.2f}%",
+                'F1 (Weighted)': f"{rep_result.get('best_f1_score', 0.0) * 100:.2f}%",
+                'F1 (Macro)': f"{best_m.get('f1_macro', 0.0) * 100:.2f}%",
+                'Precision (W)': f"{best_m.get('precision', 0.0) * 100:.2f}%",
+                'Recall (W)': f"{best_m.get('recall', 0.0) * 100:.2f}%",
+                'MCC': f"{best_m.get('matthews_correlation_coefficient', 0.0):.4f}",
+                'Val Loss': f"{best_m.get('val_loss', 0.0):.4f}",
+            })
 
     if aggregated:
-        aggregated_row = {
-            'Repetition': 'MÉDIA',
-            'Balanced Acc': f"{aggregated['mean_balanced_accuracy'] * 100:.2f}% +- {aggregated['std_balanced_accuracy'] * 100:.2f}%",
-            'Accuracy': f"{aggregated['mean_accuracy'] * 100:.2f}% +- {aggregated['std_accuracy'] * 100:.2f}%",
-            'F1-Score': f"{aggregated['mean_f1'] * 100:.2f}% +- {aggregated['std_f1'] * 100:.2f}%",
-            'Specificity': f"{aggregated['mean_specificity'] * 100:.2f}% +- {aggregated['std_specificity'] * 100:.2f}%",
-            'Precision': f"{aggregated['mean_precision'] * 100:.2f}% +- {aggregated['std_precision'] * 100:.2f}%",
-            'Recall': f"{aggregated['mean_recall'] * 100:.2f}% +- {aggregated['std_recall'] * 100:.2f}%",
-            'MCC': f"{aggregated['mean_mcc']:.4f} +- {aggregated['std_mcc']:.4f}",
-            'Val Loss': f"{aggregated['mean_loss']:.4f} +- {aggregated['std_loss']:.4f}",
-        }
+        if not is_multiclass:
+            aggregated_row = {
+                'Repetition': 'MÉDIA',
+                'Balanced Acc': f"{aggregated['mean_balanced_accuracy'] * 100:.2f}% ± {aggregated['std_balanced_accuracy'] * 100:.2f}%",
+                'Accuracy': f"{aggregated['mean_accuracy'] * 100:.2f}% ± {aggregated['std_accuracy'] * 100:.2f}%",
+                'F1-Score': f"{aggregated['mean_f1'] * 100:.2f}% ± {aggregated['std_f1'] * 100:.2f}%",
+                'Specificity': f"{aggregated['mean_specificity'] * 100:.2f}% ± {aggregated['std_specificity'] * 100:.2f}%",
+                'Precision': f"{aggregated['mean_precision'] * 100:.2f}% ± {aggregated['std_precision'] * 100:.2f}%",
+                'Recall': f"{aggregated['mean_recall'] * 100:.2f}% ± {aggregated['std_recall'] * 100:.2f}%",
+                'MCC': f"{aggregated['mean_mcc']:.4f} ± {aggregated['std_mcc']:.4f}",
+                'Val Loss': f"{aggregated['mean_loss']:.4f} ± {aggregated['std_loss']:.4f}",
+            }
+        else:
+            aggregated_row = {
+                'Repetition': 'MÉDIA',
+                'Balanced Acc': f"{aggregated['mean_balanced_accuracy'] * 100:.2f}% ± {aggregated['std_balanced_accuracy'] * 100:.2f}%",
+                'Accuracy': f"{aggregated['mean_accuracy'] * 100:.2f}% ± {aggregated['std_accuracy'] * 100:.2f}%",
+                'F1 (Weighted)': f"{aggregated['mean_f1'] * 100:.2f}% ± {aggregated['std_f1'] * 100:.2f}%",
+                'F1 (Macro)': f"{aggregated.get('mean_f1_macro', 0.0) * 100:.2f}% ± {aggregated.get('std_f1_macro', 0.0) * 100:.2f}%",
+                'Precision (W)': f"{aggregated['mean_precision'] * 100:.2f}% ± {aggregated['std_precision'] * 100:.2f}%",
+                'Recall (W)': f"{aggregated['mean_recall'] * 100:.2f}% ± {aggregated['std_recall'] * 100:.2f}%",
+                'MCC': f"{aggregated['mean_mcc']:.4f} ± {aggregated['std_mcc']:.4f}",
+                'Val Loss': f"{aggregated['mean_loss']:.4f} ± {aggregated['std_loss']:.4f}",
+            }
 
         repetition_summary_data.append(aggregated_row)
 
@@ -135,55 +156,110 @@ def create_repetition_summary_table(
     return table
 
 def create_detailed_metrics_table(
-        best_metrics: Dict
+        best_metrics: Dict,
+        is_multiclass: bool = False
 ) -> wandb.Table:
-    detailed_metrics_data = [
-        {
-            'Metric': 'Balanced Accuracy',
-            'Value': f"{best_metrics.get('balanced_accuracy', 0.0) * 100:.2f}%",
-            'Description': 'Média de Sensitivity e Specificity'
-        },
-        {
-            'Metric': 'Accuracy',
-            'Value': f"{best_metrics.get('accuracy', 0.0) * 100:.2f}%",
-            'Description': 'Acertos totais'
-        },
-        {
-            'Metric': 'Sensitivity (Recall)',
-            'Value': f"{best_metrics.get('recall', 0.0) * 100:.2f}%",
-            'Description': 'Detecta Demented (TPR)'
-        },
-        {
-            'Metric': 'Specificity',
-            'Value': f"{best_metrics.get('specificity', 0.0) * 100:.2f}%",
-            'Description': 'Detecta NonDemented (TNR)'
-        },
-        {
-            'Metric': 'Precision',
-            'Value': f"{best_metrics.get('precision', 0.0) * 100:.2f}%",
-            'Description': 'Se prediz Demented, acerta X%'
-        },
-        {
-            'Metric': 'Negative Predictive Value',
-            'Value': f"{best_metrics.get('negative_predictive_value', 0.0) * 100:.2f}%",
-            'Description': 'Se prediz NonDemented, acerta X%'
-        },
-        {
-            'Metric': 'F1-Score',
-            'Value': f"{best_metrics.get('f1_score', 0.0) * 100:.2f}%",
-            'Description': 'Harmônica de Precision e Recall'
-        },
-        {
-            'Metric': 'MCC',
-            'Value': f"{best_metrics.get('matthews_correlation_coefficient', 0.0):.4f}",
-            'Description': 'Matthews Correlation Coef (-1 a 1)'
-        },
-        {
-            'Metric': "Cohen's Kappa",
-            'Value': f"{best_metrics.get('cohen_kappa', 0.0):.4f}",
-            'Description': 'Concordância considerando chance'
-        },
-    ]
+    if not is_multiclass:
+        detailed_metrics_data = [
+            {
+                'Metric': 'Balanced Accuracy',
+                'Value': f"{best_metrics.get('balanced_accuracy', 0.0) * 100:.2f}%",
+                'Description': 'Média de Sensitivity e Specificity'
+            },
+            {
+                'Metric': 'Accuracy',
+                'Value': f"{best_metrics.get('accuracy', 0.0) * 100:.2f}%",
+                'Description': 'Acertos totais'
+            },
+            {
+                'Metric': 'Sensitivity (Recall)',
+                'Value': f"{best_metrics.get('recall', 0.0) * 100:.2f}%",
+                'Description': 'Detecta Demented (TPR)'
+            },
+            {
+                'Metric': 'Specificity',
+                'Value': f"{best_metrics.get('specificity', 0.0) * 100:.2f}%",
+                'Description': 'Detecta Non Demented (TNR)'
+            },
+            {
+                'Metric': 'Precision',
+                'Value': f"{best_metrics.get('precision', 0.0) * 100:.2f}%",
+                'Description': 'Se prediz Demented, acerta X%'
+            },
+            {
+                'Metric': 'Negative Predictive Value',
+                'Value': f"{best_metrics.get('negative_predictive_value', 0.0) * 100:.2f}%",
+                'Description': 'Se prediz Non Demented, acerta X%'
+            },
+            {
+                'Metric': 'F1-Score',
+                'Value': f"{best_metrics.get('f1_score', 0.0) * 100:.2f}%",
+                'Description': 'Harmônica de Precision e Recall'
+            },
+            {
+                'Metric': 'MCC',
+                'Value': f"{best_metrics.get('matthews_correlation_coefficient', 0.0):.4f}",
+                'Description': 'Matthews Correlation Coef (-1 a 1)'
+            },
+            {
+                'Metric': "Cohen's Kappa",
+                'Value': f"{best_metrics.get('cohen_kappa', 0.0):.4f}",
+                'Description': 'Concordância considerando chance'
+            },
+        ]
+    else:
+        detailed_metrics_data = [
+            {
+                'Metric': 'Balanced Accuracy',
+                'Value': f"{best_metrics.get('balanced_accuracy', 0.0) * 100:.2f}%",
+                'Description': 'Média balanceada entre classes'
+            },
+            {
+                'Metric': 'Accuracy',
+                'Value': f"{best_metrics.get('accuracy', 0.0) * 100:.2f}%",
+                'Description': 'Acertos totais'
+            },
+            {
+                'Metric': 'F1-Score (Weighted)',
+                'Value': f"{best_metrics.get('f1_score', 0.0) * 100:.2f}%",
+                'Description': 'F1 ponderado pela distribuição'
+            },
+            {
+                'Metric': 'F1-Score (Macro)',
+                'Value': f"{best_metrics.get('f1_macro', 0.0) * 100:.2f}%",
+                'Description': 'F1 média simples entre classes'
+            },
+            {
+                'Metric': 'Precision (Weighted)',
+                'Value': f"{best_metrics.get('precision', 0.0) * 100:.2f}%",
+                'Description': 'Precision ponderada'
+            },
+            {
+                'Metric': 'Precision (Macro)',
+                'Value': f"{best_metrics.get('precision_macro', 0.0) * 100:.2f}%",
+                'Description': 'Precision média entre classes'
+            },
+            {
+                'Metric': 'Recall (Weighted)',
+                'Value': f"{best_metrics.get('recall', 0.0) * 100:.2f}%",
+                'Description': 'Recall ponderado'
+            },
+            {
+                'Metric': 'Recall (Macro)',
+                'Value': f"{best_metrics.get('recall_macro', 0.0) * 100:.2f}%",
+                'Description': 'Recall médio entre classes'
+            },
+            {
+                'Metric': 'MCC',
+                'Value': f"{best_metrics.get('matthews_correlation_coefficient', 0.0):.4f}",
+                'Description': 'Matthews Correlation Coef (-1 a 1)'
+            },
+            {
+                'Metric': "Cohen's Kappa",
+                'Value': f"{best_metrics.get('cohen_kappa', 0.0):.4f}",
+                'Description': 'Concordância considerando chance'
+            },
+        ]
 
     table = wandb.Table(
         columns=['Metric', 'Value', 'Description'],
@@ -192,30 +268,72 @@ def create_detailed_metrics_table(
 
     return table
 
+def create_per_class_metrics_table(
+        best_metrics: Dict,
+        class_names: List[str]
+) -> wandb.Table:
+    per_class_data = []
+
+    precision_per_class = best_metrics.get('precision_per_class', [])
+    recall_per_class = best_metrics.get('recall_per_class', [])
+    f1_per_class = best_metrics.get('f1_per_class', [])
+    support_per_class = best_metrics.get('support_per_class', [])
+
+    for i, class_name in enumerate(class_names):
+        per_class_data.append({
+            'Class': class_name,
+            'Precision': f"{precision_per_class[i] * 100:.2f}%" if i < len(precision_per_class) else "N/A",
+            'Recall': f"{recall_per_class[i] * 100:.2f}%" if i < len(recall_per_class) else "N/A",
+            'F1-Score': f"{f1_per_class[i] * 100:.2f}%" if i < len(f1_per_class) else "N/A",
+            'Support': str(support_per_class[i]) if i < len(support_per_class) else "N/A"
+        })
+
+    table = wandb.Table(
+        columns=['Class', 'Precision', 'Recall', 'F1-Score', 'Support'],
+        data=[[row['Class'], row['Precision'], row['Recall'], row['F1-Score'], row['Support']]
+              for row in per_class_data]
+    )
+
+    return table
+
 def summarize_wandb_repetitions(
         repetition_results: List[Dict],
         params: Dict,
-        idx: int
+        idx: int,
+        is_multiclass: bool = False,
+        class_names: Optional[List[str]] = None
 ) -> Dict:
-    aggregated = aggregate_repetition_metrics(repetition_results)
+    aggregated = aggregate_repetition_metrics(repetition_results, is_multiclass)
 
     repetition_summary_table = create_repetition_summary_table(
         repetition_results,
-        aggregated
+        aggregated,
+        is_multiclass
     )
 
     val_f1_scores = [r['best_f1_score'] for r in repetition_results]
     best_rep_idx = np.argmax(val_f1_scores)
     best_rep_metrics = repetition_results[best_rep_idx]['best_metrics']
 
-    detailed_metrics_table = create_detailed_metrics_table(best_rep_metrics)
+    detailed_metrics_table = create_detailed_metrics_table(
+        best_rep_metrics,
+        is_multiclass
+    )
 
     log_dict = {
         "tables/repetition_summary": repetition_summary_table,
         "tables/detailed_metrics": detailed_metrics_table,
     }
 
-    wandb.log(log_dict)
+    if is_multiclass and class_names:
+        per_class_table = create_per_class_metrics_table(
+            best_rep_metrics,
+            class_names
+        )
+        log_dict["tables/per_class_metrics"] = per_class_table
+
+    if wandb.run is not None:
+        wandb.log(log_dict)
 
     result = {
         'params': params,
@@ -231,8 +349,10 @@ def summarize_wandb_repetitions(
     print(
         f"  Mean Balanced Acc: {aggregated['mean_balanced_accuracy'] * 100:.2f}% +- {aggregated['std_balanced_accuracy'] * 100:.2f}%")
 
-    return result
+    if is_multiclass and 'mean_f1_macro' in aggregated:
+        print(f"  Mean F1 (Macro): {aggregated['mean_f1_macro'] * 100:.2f}% +- {aggregated['std_f1_macro'] * 100:.2f}%")
 
+    return result
 
 def finish_wandb_run(quiet: bool = True):
     try:
@@ -243,35 +363,3 @@ def finish_wandb_run(quiet: bool = True):
     except Exception as e:
         if not quiet:
             print(f"\nErro ao finalizar WandB run: {e}")
-
-def log_model_artifact(
-        model_path: Path,
-        artifact_name: str,
-        artifact_type: str = "model",
-        metadata: Optional[Dict] = None
-):
-    artifact = wandb.Artifact(
-        name=artifact_name,
-        type=artifact_type,
-        metadata=metadata or {}
-    )
-
-    artifact.add_file(str(model_path))
-    wandb.log_artifact(artifact)
-
-    print(f"\nModel artifact logged: {artifact_name}\n")
-
-def log_config_artifact(
-        config_path: Path,
-        artifact_name: str = "config",
-        artifact_type: str = "config"
-):
-    artifact = wandb.Artifact(
-        name=artifact_name,
-        type=artifact_type
-    )
-
-    artifact.add_file(str(config_path))
-    wandb.log_artifact(artifact)
-
-    print(f"\nConfig artifact logged: {artifact_name}\n")
