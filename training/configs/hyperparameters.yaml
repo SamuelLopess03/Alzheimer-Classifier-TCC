@@ -114,7 +114,7 @@ optimizer_config:
       transformer: 0.01
 
 hardware:
-  device: "cpu"  # cuda, cpu, auto
+  device: "cuda"  # cuda, cpu, auto
   mixed_precision: true
   num_workers: 4
   pin_memory: true
