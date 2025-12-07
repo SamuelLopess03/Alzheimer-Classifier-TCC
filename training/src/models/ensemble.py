@@ -170,11 +170,11 @@ class HierarchicalPipeline(nn.Module):
     ):
         if binary_path is None:
             binary_checkpoint_path = self.binary_config['checkpoint']['save_path']
-            binary_path = str(Path(binary_checkpoint_path) / "best_model_binary.pth")
+            binary_path = str(Path(binary_checkpoint_path) / "best_model.pth")
 
         if multiclass_path is None:
             multiclass_checkpoint_path = self.multiclass_config['checkpoint']['save_path']
-            multiclass_path = str(Path(multiclass_checkpoint_path) / "best_model_multiclass.pth")
+            multiclass_path = str(Path(multiclass_checkpoint_path) / "best_model.pth")
 
         print(f"\n{'-' * 60}")
         print("CARREGANDO CHECKPOINTS DOS MODELOS")

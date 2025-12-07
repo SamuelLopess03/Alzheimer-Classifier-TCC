@@ -136,7 +136,8 @@ def improved_combination_evaluation(
         executed_indices: Set[int],
         results: Dict,
         total_combinations: int,
-        model_type: str = 'binary'
+        model_type: str = 'binary',
+        class_names: Optional[List[str]] = None
 ) -> Dict:
     model_type_display = "BINÁRIO" if model_type == 'binary' else "MULTICLASSE"
 
@@ -144,7 +145,7 @@ def improved_combination_evaluation(
     print(f"AGREGANDO RESULTADOS DA COMBINAÇÃO #{index_combination + 1} ({model_type_display})")
     print(f"{'-' * 60}\n")
 
-    result = summarize_wandb_repetitions(repetition_results, params, index_combination)
+    result = summarize_wandb_repetitions(repetition_results, params, index_combination, is_multiclass=(model_type == 'multiclass'), class_names=class_names)
     aggregated = result['aggregated']
 
     checkpoint_key = f"{architecture_name}_{model_type}"
@@ -152,7 +153,7 @@ def improved_combination_evaluation(
         checkpoint_key, index_combination, params, aggregated
     )
 
-    current_score = calculate_combined_score(aggregated)
+    current_score = calculate_combined_score(aggregated, is_multiclass=(model_type == 'multiclass'))
 
     print(f"Score Combinado ({model_type_display}): {current_score:.6f}\n")
 
@@ -358,7 +359,7 @@ def search_best_hyperparameters_holdout(
     print(f"  Save Path: {save_path}")
     print(f"{'-' * 60}\n")
 
-    checkpoint_manager = GridSearchCheckpointManager(save_path)
+    checkpoint_manager = GridSearchCheckpointManager(os.path.join(save_path, 'experiments'))
 
     combinations, param_names = generate_random_combinations(
         param_grid, max_combinations, random_state=random_seed
@@ -515,7 +516,8 @@ def search_best_hyperparameters_holdout(
                 executed_indices=executed_indices,
                 results=results,
                 total_combinations=total_combinations,
-                model_type=model_type
+                model_type=model_type,
+                class_names=class_names
             )
 
         if wandb_enabled:
