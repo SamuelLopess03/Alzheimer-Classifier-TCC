@@ -56,14 +56,13 @@ validation:
     - "roc_auc"
 
 checkpoint:
-  save_path: "../../shared/models/binary/checkpoints"
+  save_path: "../../shared/models/binary"
   save_best_only: true
   monitor: "val_f1_score"
   mode: "max"
   save_frequency: 5  # Salvar checkpoint a cada N épocas
 
 logging:
-  save_path: "../../shared/logs/binary"
   wandb:
     enabled: true
     project: "alzheimer-binary"

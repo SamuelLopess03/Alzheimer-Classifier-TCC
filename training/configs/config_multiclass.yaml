@@ -61,14 +61,13 @@ validation:
     - "roc_auc"
 
 checkpoint:
-  save_path: "../../shared/models/multiclass/checkpoints"
+  save_path: "../../shared/models/multiclass"
   save_best_only: true
   monitor: "val_f1_score"
   mode: "max"
   save_frequency: 5  # Salvar checkpoint a cada N épocas
 
 logging:
-  save_path: "../../shared/logs/multiclass"
   wandb:
     enabled: true
     project: "alzheimer-multiclass"

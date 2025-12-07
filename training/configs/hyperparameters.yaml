@@ -119,12 +119,7 @@ hardware:
   num_workers: 4
   pin_memory: true
 
-logging:
-  enabled: true
-
 # Resultados
 results:
-  save_path: "../../shared/logs/experiments"
-  top_k_models: 3
+  save_path: "../../shared/logs"
   save_checkpoints: true
-  log_model_summary: true
