@@ -1,3 +1,5 @@
+from platform import architecture
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -9,6 +11,12 @@ import os
 from training.src.data import DynamicAugmentationDataset, StaticPreprocessedDataset
 from training.src.evaluation import calculate_metrics_model
 from training.src.utils import load_binary_config, load_multiclass_config, load_hyperparameters_config
+from training.src.visualization import (
+    init_wandb_run, finish_wandb_run,
+    plot_confusion_matrix, log_confusion_matrix_figure,
+    plot_roc_curve, log_roc_curve_figure,
+    close_figure
+)
 
 def get_training_config(is_multiclass: bool = False) -> Dict:
     if is_multiclass:
@@ -252,7 +260,6 @@ def train_holdout_model(
         print(f"EPOCH {epoch + 1}/{num_epochs}")
         print(f"{'-' * 60}\n")
 
-        print("Criando dataset de treino (augmentation dinâmica)...\n")
         train_dataset = DynamicAugmentationDataset(
             subset_dataset=train_split,
             architecture_name=architecture_name
@@ -294,16 +301,24 @@ def train_holdout_model(
             train_loss=train_loss,
             repetition_number=repetition_number,
             epoch_number=epoch + 1,
-            log_to_wandb=config['logging']['wandb']['enabled']
+            log_to_wandb=config['logging']['wandb']['enabled'],
+            is_multiclass=is_multiclass
         )
 
-        print(f"\nResultados do Epoch {epoch + 1} - Modelo {model_type}:")
+        print(f"\nResultados do Epoch {epoch + 1}:")
         print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_accuracy * 100:.2f}%")
         print(f"  Val Loss:   {val_loss:.4f} | Val Acc:   {metrics['accuracy'] * 100:.2f}%")
         print(f"  Balanced Acc: {metrics['balanced_accuracy'] * 100:.2f}%")
         print(f"  F1-Score:     {metrics['f1_score'] * 100:.2f}%")
-        print(f"  Sensitivity:  {metrics['recall'] * 100:.2f}%")
-        print(f"  Specificity:  {metrics['specificity'] * 100:.2f}%")
+
+        if not is_multiclass:
+            print(f"  Sensitivity:  {metrics['recall'] * 100:.2f}%")
+            print(f"  Specificity:  {metrics['specificity'] * 100:.2f}%")
+            print(f"  Precision:    {metrics['precision'] * 100:.2f}%")
+        else:
+            print(f"  F1 (Macro):   {metrics.get('f1_macro', 0) * 100:.2f}%")
+            print(f"  Recall (Weighted): {metrics['recall'] * 100:.2f}%")
+            print(f"  Precision (Weighted): {metrics['precision'] * 100:.2f}%")
 
         if metrics['f1_score'] > best_f1_score:
             best_f1_score = metrics['f1_score']
@@ -329,6 +344,11 @@ def train_holdout_model(
     print(f"{'-' * 60}")
     print(f"  Melhor F1-Score: {best_f1_score * 100:.2f}%")
     print(f"  Balanced Acc: {best_metrics['balanced_accuracy'] * 100:.2f}%")
+    if not is_multiclass:
+        print(f"  Sensitivity: {best_metrics['recall'] * 100:.2f}%")
+        print(f"  Specificity: {best_metrics['specificity'] * 100:.2f}%")
+    else:
+        print(f"  F1 (Macro): {best_metrics.get('f1_macro', 0) * 100:.2f}%")
     print(f"{'-' * 60}\n")
 
     return result
@@ -340,6 +360,7 @@ def train_final_model(
         train_loader: DataLoader,
         val_loader: DataLoader,
         test_loader: DataLoader,
+        hyperparameters: dict,
         device: torch.device,
         is_multiclass: bool = False,
         use_gradient_clipping: bool = True,
@@ -360,7 +381,9 @@ def train_final_model(
     os.makedirs(save_path, exist_ok=True)
 
     model_type = "Multiclasse" if is_multiclass else "Binário"
-    checkpoint_file = os.path.join(save_path, f"best_model_{model_type.lower()}.pth")
+    checkpoint_file = os.path.join(save_path, f"best_model.pth")
+
+    wandb_enabled = config['logging']['wandb']['enabled']
 
     scheduler = None
     if 'scheduler' in training_config:
@@ -368,14 +391,14 @@ def train_final_model(
         if scheduler:
             print(f"Scheduler configurado: {training_config['scheduler']['type']}\n")
 
-    print(f"\n{'-' * 60}")
+    print(f"\n{'=' * 80}")
     print(f"TREINAMENTO FINAL DO MODELO ({model_type})")
-    print(f"{'-' * 60}")
+    print(f"{'=' * 80}")
     print(f"Configurações:")
     print(f"   Épocas: {num_epochs}")
     print(f"   Patience: {early_stopping_patience}")
     print(f"   Monitor: {monitor_metric}")
-    print(f"   Checkpoint: {checkpoint_file}\n")
+    print(f"   Checkpoint: {checkpoint_file}")
 
     best_val_f1 = 0.0
     best_epoch = 0
@@ -414,7 +437,8 @@ def train_final_model(
             class_names=class_names,
             val_loss=val_loss,
             train_loss=train_loss,
-            log_to_wandb=config['logging']['wandb']['enabled']
+            log_to_wandb=False,
+            is_multiclass=is_multiclass
         )
 
         train_losses.append(train_loss)
@@ -458,10 +482,47 @@ def train_final_model(
             break
 
     print(f"\n{'-' * 60}")
-    print(f"AVALIAÇÃO NO TEST SET ({model_type})")
+    print(f"AVALIAÇÃO NO DATASET DE TESTE ({model_type})")
     print(f"{'-' * 60}\n")
 
-    checkpoint = torch.load(checkpoint_file)
+    run = None
+    if wandb_enabled:
+        architecture_name = hyperparameters['architecture_name']
+        wandb_project = config['logging']['wandb'].get('project', 'final_training')
+        wandb_entity = config['logging']['wandb'].get('entity', None)
+
+        run_name = f"{architecture_name}_final_training_{model_type.lower()}"
+        wandb_dir = os.path.join(save_path, 'wandb_logs')
+
+        run = init_wandb_run(
+            project_name=wandb_project,
+            run_name=run_name,
+            config={
+                "model_type": model_type,
+                "num_classes": len(class_names),
+                "class_names": class_names,
+                "num_epochs": num_epochs,
+                "patience": early_stopping_patience,
+                "monitor_metric": monitor_metric,
+                "optimizer": optimizer.__class__.__name__,
+                "criterion": criterion.__class__.__name__,
+                "use_gradient_clipping": use_gradient_clipping,
+                "max_grad_norm": max_grad_norm if use_gradient_clipping else None,
+                "scheduler": training_config.get('scheduler', {}).get('type', 'None'),
+                **hyperparameters
+            },
+            entity=wandb_entity,
+            tags=["final_training", architecture_name, model_type.lower()],
+            group=f"{architecture_name}_final_{model_type.lower()}",
+            save_code=True,
+            directory=wandb_dir
+        )
+
+        if run is None:
+            wandb_enabled = False
+            print("Falha ao inicializar W&B. Continuando sem logging.\n")
+
+    checkpoint = torch.load(checkpoint_file, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
 
     y_true, y_pred, y_pred_proba, test_loss = validation_epoch(
@@ -478,16 +539,67 @@ def train_final_model(
         class_names=class_names,
         val_loss=test_loss,
         train_loss=0.0,
-        log_to_wandb=False
+        log_to_wandb=wandb_enabled,
+        is_multiclass=is_multiclass
     )
 
     print(f"\nResultados Finais (Test Set - {model_type}):")
+    print(f"{'─' * 60}")
     print(f"  Accuracy: {test_metrics['accuracy'] * 100:.2f}%")
     print(f"  Balanced Acc: {test_metrics['balanced_accuracy'] * 100:.2f}%")
     print(f"  F1-Score: {test_metrics['f1_score'] * 100:.2f}%")
-    print(f"  Sensitivity: {test_metrics['recall'] * 100:.2f}%")
-    print(f"  Specificity: {test_metrics['specificity'] * 100:.2f}%")
-    print(f"  Precision: {test_metrics['precision'] * 100:.2f}%\n")
+
+    if not is_multiclass:
+        print(f"  Sensitivity: {test_metrics['recall'] * 100:.2f}%")
+        print(f"  Specificity: {test_metrics['specificity'] * 100:.2f}%")
+        print(f"  Precision: {test_metrics['precision'] * 100:.2f}%")
+        print(f"  NPV: {test_metrics['negative_predictive_value'] * 100:.2f}%")
+    else:
+        print(f"  F1 (Macro): {test_metrics.get('f1_macro', 0) * 100:.2f}%")
+        print(f"  Precision (Weighted): {test_metrics['precision'] * 100:.2f}%")
+        print(f"  Recall (Weighted): {test_metrics['recall'] * 100:.2f}%")
+
+    print(f"  MCC: {test_metrics['matthews_correlation_coefficient']:.4f}")
+    print(f"  Cohen's Kappa: {test_metrics['cohen_kappa']:.4f}")
+    print(f"{'─' * 60}\n")
+
+    print("Gerando visualizações...\n")
+
+    cm = np.array(test_metrics['confusion_matrix'])
+    fig_cm = plot_confusion_matrix(
+        cm=cm,
+        metrics=test_metrics,
+        class_names=class_names,
+        is_multiclass=is_multiclass
+    )
+
+    cm_path = os.path.join(save_path, f"confusion_matrix_{model_type.lower().replace(' ', '_')}.png")
+    fig_cm.savefig(cm_path, dpi=300, bbox_inches='tight')
+    print(f"Confusion Matrix salva em: {cm_path}")
+
+    if wandb_enabled and run is not None:
+        log_confusion_matrix_figure(fig_cm, key=f"{model_type.lower()}/confusion_matrix")
+
+    close_figure(fig_cm)
+
+    fig_roc = plot_roc_curve(
+        y_true=y_true,
+        y_pred_proba=y_pred_proba,
+        class_names=class_names,
+        is_multiclass=is_multiclass
+    )
+
+    roc_path = os.path.join(save_path, f"roc_curve_{model_type.lower().replace(' ', '_')}.png")
+    fig_roc.savefig(roc_path, dpi=300, bbox_inches='tight')
+    print(f"ROC Curve salva em: {roc_path}")
+
+    if wandb_enabled and run is not None:
+        log_roc_curve_figure(fig_roc, key=f"{model_type.lower()}/roc_curve")
+
+    close_figure(fig_roc)
+
+    if wandb_enabled and run is not None:
+        finish_wandb_run(quiet=False)
 
     results = {
         'best_epoch': best_epoch,
@@ -500,5 +612,9 @@ def train_final_model(
         },
         'checkpoint_path': checkpoint_file
     }
+
+    print(f"{'=' * 80}")
+    print(f"TREINAMENTO FINAL CONCLUÍDO ({model_type})")
+    print(f"{'=' * 80}\n")
 
     return results
