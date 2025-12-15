@@ -8,10 +8,13 @@ from .grid_search import (
 )
 
 from .trainer import (
-    train_final_model,
     train_holdout_model,
     validation_epoch,
     train_epoch,
+)
+
+from .inference import (
+    train_final_model
 )
 
 __all__ = [
@@ -24,8 +27,10 @@ __all__ = [
     "GridSearchCheckpointManager",
 
     # Trainer Functions
-    "train_final_model",
     "train_holdout_model",
     "validation_epoch",
     "train_epoch",
+
+    # Inference Functions
+    "train_final_model"
 ]
