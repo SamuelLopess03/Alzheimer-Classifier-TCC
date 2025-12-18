@@ -6,7 +6,7 @@ from collections import Counter
 from training.src.training import run_grid_search
 from training.src.utils import load_binary_config
 
-def main():
+def train_binary():
     config = load_binary_config()
 
     print("\n" + "=" * 80)
@@ -108,4 +108,4 @@ def main():
     print("=" * 80 + "\n")
 
 if __name__ == '__main__':
-    main()
+    train_binary()

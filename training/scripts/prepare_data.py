@@ -80,7 +80,7 @@ def verify_datasets(output_path: str):
 
     return all_valid
 
-def main():
+def prepare_data():
     args = parse_args()
 
     print("\n" + "=" * 60)
@@ -161,4 +161,4 @@ def main():
     print(f"{'-' * 60}\n")
 
 if __name__ == '__main__':
-    main()
+    prepare_data()
