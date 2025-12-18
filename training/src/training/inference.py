@@ -19,6 +19,8 @@ from training.src.visualization import (
     close_figure
 )
 from training.src.evaluation import calculate_metrics_model
+from training.src.data import DynamicAugmentationDataset, StaticPreprocessedDataset
+from training.src.utils import load_hyperparameters_config
 
 def setup_training_environment(is_multiclass: bool) -> Dict:
     config = get_training_config(is_multiclass)
@@ -51,7 +53,6 @@ def setup_training_environment(is_multiclass: bool) -> Dict:
         'monitor_metric': checkpoint_config['monitor'],
         'wandb_enabled': config['logging']['wandb']['enabled']
     }
-
 
 def create_scheduler(
         optimizer: torch.optim.Optimizer,
@@ -137,17 +138,6 @@ def initialize_wandb_tracking(env_config: Dict, hyperparameters: dict,
         return False, None
 
     return True, run
-
-def print_training_header(env_config: Dict):
-    print(f"\n{'=' * 80}")
-    print(f"TREINAMENTO FINAL DO MODELO ({env_config['model_type']})")
-    print(f"{'=' * 80}")
-    print(f"Configurações:")
-    print(f"   Épocas: {env_config['num_epochs']}")
-    print(f"   Patience: {env_config['early_stopping_patience']}")
-    print(f"   Monitor: {env_config['monitor_metric']}")
-    print(f"   Checkpoint: {env_config['checkpoint_file']}")
-    print(f"   Grad-CAM: {env_config['gradcam_path']}\n")
 
 def train_single_epoch(model: nn.Module, train_loader: DataLoader,
                        criterion: nn.Module, optimizer: torch.optim.Optimizer,
@@ -429,9 +419,9 @@ def train_final_model(
         model: nn.Module,
         criterion: nn.Module,
         optimizer: torch.optim.Optimizer,
-        train_loader: DataLoader,
-        val_loader: DataLoader,
-        test_loader: DataLoader,
+        train_split,
+        val_split,
+        test_split,
         hyperparameters: dict,
         device: torch.device,
         is_multiclass: bool = False,
@@ -442,7 +432,18 @@ def train_final_model(
 ) -> Dict:
     env_config = setup_training_environment(is_multiclass)
     scheduler = setup_scheduler(optimizer, env_config['training_config'])
-    print_training_header(env_config)
+    print(f"\nConfigurações:")
+    print(f"   Épocas: {env_config['num_epochs']}")
+    print(f"   Patience: {env_config['early_stopping_patience']}")
+    print(f"   Monitor: {env_config['monitor_metric']}")
+    print(f"   Checkpoint: {env_config['checkpoint_file']}")
+    print(f"   Grad-CAM: {env_config['gradcam_path']}\n")
+
+    hyperparams_config = load_hyperparameters_config()
+
+    hardware_config = hyperparams_config.get('hardware', {})
+    num_workers = hardware_config.get('num_workers', 2)
+    pin_memory = hardware_config.get('pin_memory', True)
 
     best_val_f1 = 0.0
     best_epoch = 0
@@ -451,7 +452,35 @@ def train_final_model(
     val_losses = []
     val_f1_scores = []
 
+    print("Criando dataset de validação (preprocessing estático)...\n")
+    val_dataset = StaticPreprocessedDataset(
+        subset_dataset=val_split,
+        architecture_name=hyperparameters['architecture_name']
+    )
+
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=hyperparameters['batch_size'],
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory
+    )
+
     for epoch in range(env_config['num_epochs']):
+        train_dataset = DynamicAugmentationDataset(
+            subset_dataset=train_split,
+            architecture_name=hyperparameters['architecture_name']
+        )
+
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=hyperparameters['batch_size'],
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            drop_last=True
+        )
+
         train_loss, train_acc = train_single_epoch(
             model, train_loader, criterion, optimizer, device,
             use_gradient_clipping, max_grad_norm
@@ -494,6 +523,20 @@ def train_final_model(
     print(f"\n{'-' * 60}")
     print(f"AVALIAÇÃO NO DATASET DE TESTE ({env_config['model_type']})")
     print(f"{'-' * 60}\n")
+
+    print("Criando dataset de teste (preprocessing estático)...\n")
+    test_dataset = StaticPreprocessedDataset(
+        subset_dataset=test_split,
+        architecture_name=hyperparameters['architecture_name']
+    )
+
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=hyperparameters['batch_size'],
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory
+    )
 
     wandb_enabled, run = initialize_wandb_tracking(
         env_config, hyperparameters, optimizer, criterion,
@@ -555,9 +598,5 @@ def train_final_model(
         'checkpoint_path': env_config['checkpoint_file'],
         'gradcam_path': env_config['gradcam_path'] if generate_gradcam else None
     }
-
-    print(f"{'=' * 80}")
-    print(f"TREINAMENTO FINAL CONCLUÍDO ({env_config['model_type']})")
-    print(f"{'=' * 80}\n")
 
     return results

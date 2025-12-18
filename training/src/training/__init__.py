@@ -11,6 +11,7 @@ from .trainer import (
     train_holdout_model,
     validation_epoch,
     train_epoch,
+    get_training_config
 )
 
 from .inference import (
@@ -30,6 +31,7 @@ __all__ = [
     "train_holdout_model",
     "validation_epoch",
     "train_epoch",
+    "get_training_config",
 
     # Inference Functions
     "train_final_model"
