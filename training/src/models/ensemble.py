@@ -3,7 +3,7 @@ import torch.nn as nn
 from typing import Tuple, Optional, Dict, List
 from pathlib import Path
 
-from training.src.utils import load_binary_config, load_multiclass_config
+from ..utils import load_binary_config, load_multiclass_config
 
 class HierarchicalPipeline(nn.Module):
     def __init__(

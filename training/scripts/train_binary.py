@@ -3,8 +3,8 @@ import os
 from torchvision import datasets as tv_datasets
 from collections import Counter
 
-from training.src.training import run_grid_search
-from training.src.utils import load_binary_config
+from ..src.training import run_grid_search
+from ..src.utils import load_binary_config
 
 def train_binary():
     config = load_binary_config()

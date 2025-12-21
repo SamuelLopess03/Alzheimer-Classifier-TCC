@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from typing import cast, Optional
 
-from training.src.utils import load_hyperparameters_config
+from ..utils import load_hyperparameters_config
 
 def adapt_model_for_grayscale(
         model: nn.Module,

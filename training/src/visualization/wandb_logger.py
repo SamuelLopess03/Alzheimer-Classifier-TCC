@@ -4,7 +4,7 @@ import numpy as np
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
-from training.src.evaluation import aggregate_repetition_metrics
+from ..evaluation import aggregate_repetition_metrics
 
 def init_wandb_run(
         project_name: str,

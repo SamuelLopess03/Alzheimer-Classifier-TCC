@@ -3,7 +3,7 @@ import shutil
 from typing import List, Tuple
 from torchvision import datasets
 
-from training.src.utils import split_dataset_train_test, load_multiclass_config
+from ..utils import split_dataset_train_test, load_multiclass_config
 
 def prepare_dataset_multiclass(
         output_base_path: str = "./shared/data"

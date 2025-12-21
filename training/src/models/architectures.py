@@ -8,7 +8,7 @@ from typing import Dict, Tuple, List, Optional
 from sklearn.utils.class_weight import compute_class_weight
 
 from .model_adapters import adapt_model_for_grayscale
-from training.src.utils import load_hyperparameters_config
+from ..utils import load_hyperparameters_config
 
 def create_model(
         architecture_name: str,

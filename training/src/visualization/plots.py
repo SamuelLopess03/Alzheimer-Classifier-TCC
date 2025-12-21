@@ -4,7 +4,7 @@ import seaborn as sns
 from typing import Dict, List, Optional
 from matplotlib.figure import Figure
 
-from training.src.evaluation import calculate_roc_metrics
+from ..evaluation import calculate_roc_metrics
 
 def plot_confusion_matrix(
         cm: np.ndarray,

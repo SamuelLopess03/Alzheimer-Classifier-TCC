@@ -8,19 +8,19 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Set
 from torchvision.datasets import ImageFolder
 
-from training.src.models import (
+from ..models import (
     create_model_with_architecture,
     get_architecture_specific_param_grid
 )
-from training.src.utils import (
+from ..utils import (
     create_stratified_holdout_split,
     load_binary_config,
     load_multiclass_config,
     load_hyperparameters_config
 )
-from training.src.data import augment_minority_class
-from training.src.evaluation import calculate_combined_score
-from training.src.visualization import (
+from ..data import augment_minority_class
+from ..evaluation import calculate_combined_score
+from ..visualization import (
     init_wandb_run,
     summarize_wandb_repetitions,
     finish_wandb_run

@@ -5,9 +5,9 @@ from torch.amp import autocast, GradScaler
 import numpy as np
 from typing import Dict, Tuple
 
-from training.src.data import DynamicAugmentationDataset, StaticPreprocessedDataset
-from training.src.evaluation import calculate_metrics_model
-from training.src.utils import load_binary_config, load_multiclass_config, load_hyperparameters_config
+from ..data import DynamicAugmentationDataset, StaticPreprocessedDataset
+from ..evaluation import calculate_metrics_model
+from ..utils import load_binary_config, load_multiclass_config, load_hyperparameters_config
 
 def get_training_config(is_multiclass: bool = False) -> Dict:
     if is_multiclass:

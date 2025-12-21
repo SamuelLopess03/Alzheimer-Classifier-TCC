@@ -4,10 +4,10 @@ import argparse
 import time
 from typing import Optional
 
-from prepare_data import prepare_data
-from train_binary import train_binary
-from train_multiclass import train_multiclass
-from inference import inference
+from .prepare_data import prepare_data
+from .train_binary import train_binary
+from .train_multiclass import train_multiclass
+from .inference import inference
 
 DEFAULT_DATA_PATH = os.path.join(os.path.dirname(__file__), '..', 'shared', 'data')
 DEFAULT_EXPERIMENTS_PATH = os.path.join(os.path.dirname(__file__), '..', 'shared', 'logs', 'experiments')

@@ -12,15 +12,15 @@ import cv2
 from pathlib import Path
 
 from .trainer import get_training_config, train_epoch, validation_epoch
-from training.src.visualization import (
+from ..visualization import (
     init_wandb_run, finish_wandb_run,
     plot_confusion_matrix, plot_roc_curve,
     log_confusion_matrix_figure, log_roc_curve_figure,
     close_figure
 )
-from training.src.evaluation import calculate_metrics_model
-from training.src.data import DynamicAugmentationDataset, StaticPreprocessedDataset
-from training.src.utils import load_hyperparameters_config
+from ..evaluation import calculate_metrics_model
+from ..data import DynamicAugmentationDataset, StaticPreprocessedDataset
+from ..utils import load_hyperparameters_config
 
 def setup_training_environment(is_multiclass: bool) -> Dict:
     config = get_training_config(is_multiclass)

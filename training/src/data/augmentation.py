@@ -6,7 +6,7 @@ from typing import List, Optional
 from collections import Counter
 
 from .preprocessing import MedicalImagePreprocessor, prepare_image_for_augmentation
-from training.src.utils import load_augmentation_config
+from ..utils import load_augmentation_config
 
 def get_alzheimer_grayscale_augmentation(
         architecture_name: str,

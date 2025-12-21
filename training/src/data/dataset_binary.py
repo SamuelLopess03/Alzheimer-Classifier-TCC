@@ -3,7 +3,7 @@ import shutil
 from typing import Tuple, List, Dict
 from torchvision import datasets
 
-from training.src.utils import split_dataset_train_test, load_binary_config
+from ..utils import split_dataset_train_test, load_binary_config
 
 def prepare_dataset_binary(
         output_base_path: str = "./shared/data"
