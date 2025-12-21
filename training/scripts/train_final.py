@@ -135,8 +135,6 @@ def run_pipeline(args):
         print(f"  {i}. {PIPELINE_STEPS[step]}")
     print()
 
-    input("Pressione ENTER para iniciar a pipeline...")
-
     print_banner("INICIANDO EXECUÇÃO DA PIPELINE")
 
     for i, step in enumerate(pipeline_steps, 1):

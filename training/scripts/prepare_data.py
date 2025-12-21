@@ -3,8 +3,8 @@ import shutil
 import sys
 import os
 
-from ..src.data import prepare_dataset_binary, prepare_dataset_multiclass
-from ..src.utils import download_kaggle_dataset
+from src.data import prepare_dataset_binary, prepare_dataset_multiclass
+from src.utils import download_kaggle_dataset
 
 def parse_args():
     parser = argparse.ArgumentParser(

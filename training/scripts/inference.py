@@ -8,9 +8,9 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets as tv_datasets
 
-from ..src.models import create_model_with_architecture
-from ..src.training import train_final_model, get_training_config
-from ..src.utils import load_hyperparameters_config, create_stratified_holdout_split
+from src.models import create_model_with_architecture
+from src.training import train_final_model, get_training_config
+from src.utils import load_hyperparameters_config, create_stratified_holdout_split
 
 DEFAULT_EXPERIMENTS_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'shared/logs/experiments')
 DEFAULT_DATA_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'shared/data')

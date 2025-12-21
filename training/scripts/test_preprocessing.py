@@ -5,13 +5,13 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import datasets
 from collections import Counter
 
-from ..src.data import (
+from src.data import (
     MedicalImagePreprocessor,
     DynamicAugmentationDataset,
     StaticPreprocessedDataset,
     augment_minority_class
 )
-from ..src.utils import load_binary_config, load_multiclass_config
+from src.utils import load_binary_config, load_multiclass_config
 
 def test_preprocessor():
     print("\n" + "-" * 60)
