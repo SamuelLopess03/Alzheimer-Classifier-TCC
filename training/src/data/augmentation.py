@@ -2,7 +2,7 @@ import numpy as np
 import albumentations as alb
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset, Subset
-from typing import List, Optional
+from typing import List, Optional, Dict
 from collections import Counter
 
 from .preprocessing import MedicalImagePreprocessor, prepare_image_for_augmentation
@@ -395,7 +395,9 @@ def augment_minority_class(
         target_strategy: Optional[str] = None,
         target_ratio: Optional[float] = None,
         architecture_name: str = 'resnext50_32x4d',
-        minority_classes: Optional[List[int]] = None
+        minority_classes: Optional[List[int]] = None,
+        custom_targets: Optional[Dict[int, int]] = None,
+        target_percentage: Optional[Dict[int, float]] = None
 ) -> Subset:
     aug_config = load_augmentation_config()
     minority_config = aug_config['minority_augmentation']
@@ -425,7 +427,6 @@ def augment_minority_class(
         all_labels = np.array(all_labels)
 
     train_labels = all_labels[train_split.indices]
-
     class_counts = Counter(train_labels)
 
     all_classes = set(class_counts.keys())
@@ -437,16 +438,43 @@ def augment_minority_class(
         majority_count = max(class_counts.values())
 
     targets_per_class = {}
+
     for minority_class in minority_classes:
         minority_count = class_counts[minority_class]
 
         if target_strategy == 'balance':
             target_minority_count = majority_count
+
         elif target_strategy == 'ratio':
             target_minority_count = int(majority_count * target_ratio)
+
         elif target_strategy == 'proportional':
             multiplier = minority_config['strategies']['proportional']['multiplier']
             target_minority_count = int(minority_count * multiplier)
+
+        elif target_strategy == 'custom':
+            if custom_targets is None or minority_class not in custom_targets:
+                raise ValueError(
+                    f"Estratégia 'custom' requer dicionário custom_targets "
+                    f"com target para classe {minority_class}"
+                )
+            target_minority_count = custom_targets[minority_class]
+
+        elif target_strategy == 'percentage':
+            if target_percentage is None or minority_class not in target_percentage:
+                raise ValueError(
+                    f"Estratégia 'percentage' requer dicionário target_percentage "
+                    f"com percentual para classe {minority_class}"
+                )
+            percentage = target_percentage[minority_class]
+            if not 0 < percentage <= 1:
+                raise ValueError(f"Percentual deve estar entre 0 e 1, recebido: {percentage}")
+
+            current_total = sum(class_counts.values())
+            target_minority_count = int(
+                (percentage * current_total) / (1 - percentage)
+            )
+
         else:
             raise ValueError(f"\nEstratégia desconhecida: {target_strategy}\n")
 
@@ -455,6 +483,10 @@ def augment_minority_class(
     print(f"\nEstratégia: {target_strategy}")
     if target_strategy == 'ratio':
         print(f"Ratio: {target_ratio}:1")
+    elif target_strategy == 'custom':
+        print(f"Targets customizados: {custom_targets}")
+    elif target_strategy == 'percentage':
+        print(f"Percentuais alvo: {target_percentage}")
     print()
 
     all_synthetic_indices = []
@@ -505,14 +537,16 @@ def augment_minority_class(
     new_indices = list(range(len(augmented_dataset)))
     augmented_split = Subset(augmented_dataset, new_indices)
 
+    total_final = len(augmented_split)
     print(f"Distribuição Final:")
     for class_idx in sorted(class_counts.keys()):
         if class_idx in minority_classes:
             final_count = targets_per_class[class_idx]
         else:
             final_count = class_counts[class_idx]
-        print(f"   Classe {class_idx}: {final_count} amostras")
-    print(f"   Total: {len(augmented_split)} amostras\n")
+        percentage = (final_count / total_final) * 100
+        print(f"   Classe {class_idx}: {final_count} amostras ({percentage:.1f}%)")
+    print(f"   Total: {total_final} amostras\n")
 
     print(f"{'-' * 60}\n")
 

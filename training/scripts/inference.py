@@ -12,9 +12,9 @@ from src.models import create_model_with_architecture
 from src.training import train_final_model, get_training_config
 from src.utils import load_hyperparameters_config, create_stratified_holdout_split
 
-DEFAULT_EXPERIMENTS_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'shared/logs/experiments')
-DEFAULT_DATA_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'shared/data')
-DEFAULT_MODELS_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'shared/models')
+DEFAULT_EXPERIMENTS_PATH = os.path.join(os.path.dirname(__file__), '..', 'shared/logs/experiments')
+DEFAULT_DATA_PATH = os.path.join(os.path.dirname(__file__), '..', 'shared/data')
+DEFAULT_MODELS_PATH = os.path.join(os.path.dirname(__file__), '..', 'shared/models')
 
 EXECUTION_STATE_FILE = 'execution_state.json'
 

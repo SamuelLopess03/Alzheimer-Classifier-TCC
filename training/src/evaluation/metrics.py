@@ -28,7 +28,7 @@ def calculate_metrics_model(
 ) -> Dict:
     if class_names is None:
         if is_multiclass:
-            class_names = ['Mild Dementia', 'Moderate Dementia', 'Very Mild Dementia']
+            class_names = ['Mild Dementia', 'Moderate Dementia', 'Very mild Dementia']
         else:
             class_names = ['Demented', 'Non Demented']
 
@@ -138,10 +138,25 @@ def calculate_metrics_model(
             specificities.append(float(spec))
             npvs.append(float(npv))
 
+        total_samples = len(y_true)
+        weighted_spec = sum(
+            specificities[i] * np.sum(y_true == i) / total_samples
+            for i in range(num_classes)
+        )
+        weighted_npv = sum(
+            npvs[i] * np.sum(y_true == i) / total_samples
+            for i in range(num_classes)
+        )
+
+        macro_spec = float(np.mean(specificities))
+        macro_npv = float(np.mean(npvs))
+
         metrics.update({
-            'specificity': float(np.mean(specificities)),
+            'specificity': float(weighted_spec),
+            'specificity_macro': macro_spec,
             'specificity_per_class': specificities,
-            'negative_predictive_value': float(np.mean(npvs)),
+            'negative_predictive_value': float(weighted_npv),
+            'npv_macro': macro_npv,
             'npv_per_class': npvs,
         })
 

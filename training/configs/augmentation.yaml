@@ -255,6 +255,15 @@ minority_augmentation:
     proportional:
       description: "Aumenta classe minoritária em 1.5x"
       multiplier: 1.5
+    custom:
+      description: "Define a contagem do número de amostras da(s) classe(s) minoritária(s)"
+      targets:
+        0: 6000
+        1: 4000
+    percentage:
+      description: "Define uma porcentagem do dataset para a quantidade de amostras da(s) classe(s) minoritária(s)"
+      targets:
+        0: 0.40
 
   random_seed:
     base: 42

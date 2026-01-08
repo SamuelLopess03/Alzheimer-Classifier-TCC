@@ -51,7 +51,7 @@ def prepare_dataset_binary(
 
     original_classes = {
         0: "Non Demented",
-        1: "Very Mild Dementia",
+        1: "Very mild Dementia",
         2: "Mild Dementia",
         3: "Moderate Dementia"
     }

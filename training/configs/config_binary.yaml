@@ -10,13 +10,13 @@ model:
   # Mapeamento de classes do dataset original
   class_mapping:
     0: 1  # Non Demented -> Non Demented
-    1: 0  # Very Mild Dementia -> Demented
+    1: 0  # Very mild Dementia -> Demented
     2: 0  # Mild Dementia -> Demented
     3: 0  # Moderate Dementia -> Demented
 
 data:
   dataset_type: "binary"
-  data_path: "../../shared/data/splits/binary"
+  data_path: "../shared/data/splits/binary"
   split_ratios:
     train: 0.8
     val: 0.2
@@ -30,8 +30,17 @@ data:
   # Estratégia de balanceamento
   minority_augmentation:
     enabled: true
-    strategy: "ratio"  # balance, ratio, proportional
-    target_ratio: 0.6  # Apenas usado se strategy = "ratio"
+    strategy: "ratio"
+    ratio:
+      default_ratio: 0.6
+    proportional:
+      multiplier: 1.5
+    custom:
+      targets:
+        0: 6000  # Mild: número absoluto de amostras
+    percentage:
+      targets:
+        0: 0.40  # Very Mild: 30% do dataset final
 
 training:
   epochs: 500
@@ -56,7 +65,7 @@ validation:
     - "roc_auc"
 
 checkpoint:
-  save_path: "../../shared/models/binary"
+  save_path: "../shared/models/binary"
   save_best_only: true
   monitor: "val_f1_score"
   mode: "max"

@@ -2,9 +2,9 @@ __pycache__/
 
 shared/data
 
-kaggle.json
+training/kaggle.json
 
-.env
+training/.env
 
 # WandB
 wandb/

@@ -21,7 +21,7 @@ def train_binary():
     print(f"  Classes Minoritárias: {config['data']['minority_classes']}")
     print("=" * 80 + "\n")
 
-    base_path = os.path.join(os.path.dirname(__file__), '..', '..', 'shared/data')
+    base_path = os.path.join(os.path.dirname(__file__), '..', 'shared/data')
     train_path = os.path.join(base_path, 'splits/binary/train')
 
     if not os.path.exists(train_path):

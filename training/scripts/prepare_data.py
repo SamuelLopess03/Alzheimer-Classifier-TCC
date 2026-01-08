@@ -21,14 +21,14 @@ def parse_args():
     parser.add_argument(
         '--kaggle-json',
         type=str,
-        default=os.path.join(os.path.dirname(__file__), '..', '..', 'kaggle.json'),
+        default=os.path.join(os.path.dirname(__file__), '..', 'kaggle.json'),
         help='Path to kaggle.json file (default: ~/.kaggle/kaggle.json)'
     )
 
     parser.add_argument(
         '--output-path',
         type=str,
-        default=os.path.join(os.path.dirname(__file__), '..', '..', 'shared/data'),
+        default=os.path.join(os.path.dirname(__file__), '..', 'shared/data'),
         help='Base output path (default: ./shared/data)'
     )
 

@@ -313,7 +313,6 @@ def search_best_hyperparameters_holdout(
     minority_config = data_config['minority_augmentation']
     augment_minority = minority_config['enabled']
     minority_target_strategy = minority_config['strategy']
-    minority_target_ratio = minority_config.get('target_ratio', 0.6)
     minority_classes = data_config.get('minority_classes', [])
 
     wandb_config = logging_config.get('wandb', {})
@@ -348,8 +347,6 @@ def search_best_hyperparameters_holdout(
     print(f"  Augmentação Minoritária: {'SIM' if augment_minority else 'NÃO'}")
     if augment_minority:
         print(f"    Estratégia: {minority_target_strategy}")
-        if minority_target_strategy == 'ratio':
-            print(f"    Target Ratio: {minority_target_ratio}")
         print(f"    Classes Minoritárias: {minority_classes}")
     print(f"  WandB: {'Habilitado' if wandb_enabled else 'Desabilitado'}")
     if wandb_enabled:
@@ -395,13 +392,28 @@ def search_best_hyperparameters_holdout(
         if augment_minority:
             print(f"  Aplicando augmentação nas classes minoritárias ({model_type_display})...")
 
-            train_split = augment_minority_class(
-                train_split=train_split,
-                target_strategy=minority_target_strategy,
-                target_ratio=min(minority_target_ratio, 0.6),
-                architecture_name=architecture_name,
-                minority_classes=minority_classes,
-            )
+            if model_type == 'binary':
+                target_ratio = minority_config.get('ratio', {}).get('default_ratio', 0.6)
+
+                train_split = augment_minority_class(
+                    train_split=train_split,
+                    target_strategy=minority_target_strategy,
+                    target_ratio=min(target_ratio, 0.6),
+                    architecture_name=architecture_name,
+                    minority_classes=minority_classes
+                )
+
+            elif model_type == 'multiclass':
+                target_percentage = minority_config.get('percentage', {}).get('targets', {})
+                target_percentage = {int(k): float(v) for k, v in target_percentage.items()}
+
+                train_split = augment_minority_class(
+                    train_split=train_split,
+                    target_strategy=minority_target_strategy,
+                    architecture_name=architecture_name,
+                    minority_classes=minority_classes,
+                    target_percentage=target_percentage
+                )
 
         all_splits.append((train_split, val_split))
 
