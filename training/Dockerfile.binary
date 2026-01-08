@@ -28,4 +28,4 @@ COPY . .
 EXPOSE 8080
 
 # Comando padrão
-CMD ["python", "-m", "scripts.train_final"]
+CMD ["python", "-m", "scripts.train_binary"]
