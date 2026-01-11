@@ -1,0 +1,64 @@
+services:
+  alzheimer-binary:
+    container_name: ia-alzheimer-binary
+    build:
+      context: ./training
+      dockerfile: Dockerfile.binary
+    image: model-alzheimer-binary:latest
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./shared:/app/shared
+      - ./training/configs:/app/configs:ro
+    shm_size: '2gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - alzheimer-network
+
+  alzheimer-multiclass:
+    container_name: ia-alzheimer-multiclass
+    build:
+      context: ./training
+      dockerfile: Dockerfile.multiclass
+    image: model-alzheimer-multiclass:latest
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./shared:/app/shared
+      - ./training/configs:/app/configs:ro
+    shm_size: '2gb'
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - alzheimer-network
+
+volumes:
+  shared-data:
+    driver: local
+
+networks:
+  alzheimer-network:
+    driver: bridge
