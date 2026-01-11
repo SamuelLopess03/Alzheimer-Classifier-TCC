@@ -241,7 +241,7 @@ def inference(args, model_type: str = 'binary',
     is_multiclass = args.model_type == 'multiclass' if args.model_type else model_type == 'multiclass'
 
     best_experiment = find_best_experiment(
-        args.experiments_path if args.experiments_path else DEFAULT_MODELS_PATH,
+        args.experiments_path if args.experiments_path else DEFAULT_EXPERIMENTS_PATH,
         args.model_type if args.model_type else model_type
     )
 

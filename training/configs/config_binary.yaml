@@ -43,8 +43,8 @@ data:
         0: 0.40  # Very Mild: 30% do dataset final
 
 training:
-  epochs: 500
-  patience: 50  # Early stopping
+  epochs: 5
+  patience: 3  # Early stopping
   min_delta: 0.001
 
   # Scheduler
@@ -65,7 +65,7 @@ validation:
     - "roc_auc"
 
 checkpoint:
-  save_path: "../shared/models/binary"
+  save_path: "../../shared/models/binary"
   save_best_only: true
   monitor: "val_f1_score"
   mode: "max"

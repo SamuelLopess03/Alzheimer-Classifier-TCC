@@ -320,7 +320,7 @@ def search_best_hyperparameters_holdout(
     wandb_project = wandb_config.get('project', 'alzheimer-detection')
     wandb_entity = wandb_config.get('entity', None)
 
-    save_path = hyperparams_config['results']['save_path']
+    save_path = os.path.join(os.path.dirname(__file__), str(hyperparams_config['results']['save_path']))
 
     if max_combinations is None:
         arch_type = hyperparams_config['model_config'][architecture_name.lower()]['type']
@@ -598,7 +598,7 @@ def run_grid_search(
                 device=device,
                 train_dataset=train_dataset,
                 model_type=model_type,
-                n_repetitions=1,
+                n_repetitions=2,
                 max_combinations=None
             )
 

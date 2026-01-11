@@ -124,26 +124,26 @@ def create_repetition_summary_table(
         if not is_multiclass:
             aggregated_row = {
                 'Repetition': 'MÉDIA',
-                'Balanced Acc': f"{aggregated['mean_balanced_accuracy'] * 100:.2f}% ± {aggregated['std_balanced_accuracy'] * 100:.2f}%",
-                'Accuracy': f"{aggregated['mean_accuracy'] * 100:.2f}% ± {aggregated['std_accuracy'] * 100:.2f}%",
-                'F1-Score': f"{aggregated['mean_f1'] * 100:.2f}% ± {aggregated['std_f1'] * 100:.2f}%",
-                'Specificity': f"{aggregated['mean_specificity'] * 100:.2f}% ± {aggregated['std_specificity'] * 100:.2f}%",
-                'Precision': f"{aggregated['mean_precision'] * 100:.2f}% ± {aggregated['std_precision'] * 100:.2f}%",
-                'Recall': f"{aggregated['mean_recall'] * 100:.2f}% ± {aggregated['std_recall'] * 100:.2f}%",
-                'MCC': f"{aggregated['mean_mcc']:.4f} ± {aggregated['std_mcc']:.4f}",
-                'Val Loss': f"{aggregated['mean_loss']:.4f} ± {aggregated['std_loss']:.4f}",
+                'Balanced Acc': f"{aggregated['mean_balanced_accuracy'] * 100:.2f}% +- {aggregated['std_balanced_accuracy'] * 100:.2f}%",
+                'Accuracy': f"{aggregated['mean_accuracy'] * 100:.2f}% +- {aggregated['std_accuracy'] * 100:.2f}%",
+                'F1-Score': f"{aggregated['mean_f1'] * 100:.2f}% +- {aggregated['std_f1'] * 100:.2f}%",
+                'Specificity': f"{aggregated['mean_specificity'] * 100:.2f}% +- {aggregated['std_specificity'] * 100:.2f}%",
+                'Precision': f"{aggregated['mean_precision'] * 100:.2f}% +- {aggregated['std_precision'] * 100:.2f}%",
+                'Recall': f"{aggregated['mean_recall'] * 100:.2f}% +- {aggregated['std_recall'] * 100:.2f}%",
+                'MCC': f"{aggregated['mean_mcc']:.4f} +- {aggregated['std_mcc']:.4f}",
+                'Val Loss': f"{aggregated['mean_loss']:.4f} +- {aggregated['std_loss']:.4f}",
             }
         else:
             aggregated_row = {
                 'Repetition': 'MÉDIA',
-                'Balanced Acc': f"{aggregated['mean_balanced_accuracy'] * 100:.2f}% ± {aggregated['std_balanced_accuracy'] * 100:.2f}%",
-                'Accuracy': f"{aggregated['mean_accuracy'] * 100:.2f}% ± {aggregated['std_accuracy'] * 100:.2f}%",
-                'F1 (Weighted)': f"{aggregated['mean_f1'] * 100:.2f}% ± {aggregated['std_f1'] * 100:.2f}%",
-                'F1 (Macro)': f"{aggregated.get('mean_f1_macro', 0.0) * 100:.2f}% ± {aggregated.get('std_f1_macro', 0.0) * 100:.2f}%",
-                'Precision (W)': f"{aggregated['mean_precision'] * 100:.2f}% ± {aggregated['std_precision'] * 100:.2f}%",
-                'Recall (W)': f"{aggregated['mean_recall'] * 100:.2f}% ± {aggregated['std_recall'] * 100:.2f}%",
-                'MCC': f"{aggregated['mean_mcc']:.4f} ± {aggregated['std_mcc']:.4f}",
-                'Val Loss': f"{aggregated['mean_loss']:.4f} ± {aggregated['std_loss']:.4f}",
+                'Balanced Acc': f"{aggregated['mean_balanced_accuracy'] * 100:.2f}% +- {aggregated['std_balanced_accuracy'] * 100:.2f}%",
+                'Accuracy': f"{aggregated['mean_accuracy'] * 100:.2f}% +- {aggregated['std_accuracy'] * 100:.2f}%",
+                'F1 (Weighted)': f"{aggregated['mean_f1'] * 100:.2f}% +- {aggregated['std_f1'] * 100:.2f}%",
+                'F1 (Macro)': f"{aggregated.get('mean_f1_macro', 0.0) * 100:.2f}% +- {aggregated.get('std_f1_macro', 0.0) * 100:.2f}%",
+                'Precision (W)': f"{aggregated['mean_precision'] * 100:.2f}% +- {aggregated['std_precision'] * 100:.2f}%",
+                'Recall (W)': f"{aggregated['mean_recall'] * 100:.2f}% +- {aggregated['std_recall'] * 100:.2f}%",
+                'MCC': f"{aggregated['mean_mcc']:.4f} +- {aggregated['std_mcc']:.4f}",
+                'Val Loss': f"{aggregated['mean_loss']:.4f} +- {aggregated['std_loss']:.4f}",
             }
 
         repetition_summary_data.append(aggregated_row)

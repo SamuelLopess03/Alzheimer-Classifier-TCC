@@ -5,8 +5,8 @@ import time
 from typing import Optional
 
 from .prepare_data import prepare_data
-from .train_binary import train_binary
-from .train_multiclass import train_multiclass
+from .train_binary import execute_train_binary
+from .train_multiclass import execute_train_multiclass
 from .inference import inference
 
 DEFAULT_DATA_PATH = os.path.join(os.path.dirname(__file__), '..', 'shared', 'data')
@@ -42,17 +42,17 @@ def execute_prepare_data() -> bool:
         print(f"Erro na preparação de dados: {str(ex)}\n")
         return False
 
-def execute_train_binary() -> bool:
+def execute_train_binary_func() -> bool:
     try:
-        train_binary()
+        execute_train_binary()
         return True
     except Exception as ex:
         print(f"Erro no treinamento binário: {str(ex)}\n")
         return False
 
-def execute_train_multiclass() -> bool:
+def execute_train_multiclass_func() -> bool:
     try:
-        train_multiclass()
+        execute_train_multiclass()
         return True
     except Exception as ex:
         print(f"Erro no treinamento multiclasse: {str(ex)}\n")
@@ -154,10 +154,10 @@ def run_pipeline(args):
                 success = execute_prepare_data()
 
             elif step == 'train_binary':
-                success = execute_train_binary()
+                success = execute_train_binary_func()
 
             elif step == 'train_multiclass':
-                success = execute_train_multiclass()
+                success = execute_train_multiclass_func()
 
             elif step == 'inference_binary':
                 success = execute_inference(args, 'binary')

@@ -38,10 +38,10 @@ def test_augmentation_pipeline(
 ):
     if dataset_type == "binary":
         config = load_binary_config()
-        data_path = os.path.join(os.path.dirname(__file__), '..', '..', 'shared/data/splits/binary/train')
+        data_path = os.path.join(os.path.dirname(__file__), '..', 'shared/data/splits/binary/train')
     else:
         config = load_multiclass_config()
-        data_path = os.path.join(os.path.dirname(__file__), '..', '..', 'shared/data/splits/multiclass/train')
+        data_path = os.path.join(os.path.dirname(__file__), '..', 'shared/data/splits/multiclass/train')
 
     model_config = config['model']
     class_names = model_config['class_names']
@@ -166,10 +166,10 @@ def test_minority_augmentation(
 ):
     if dataset_type == "binary":
         config = load_binary_config()
-        data_path = os.path.join(os.path.dirname(__file__), '..', '..', 'shared/data/splits/binary/train')
+        data_path = os.path.join(os.path.dirname(__file__), '..', 'shared/data/splits/binary/train')
     else:
         config = load_multiclass_config()
-        data_path = os.path.join(os.path.dirname(__file__), '..', '..', 'shared/data/splits/multiclass/train')
+        data_path = os.path.join(os.path.dirname(__file__), '..', 'shared/data/splits/multiclass/train')
 
     data_config = config['data']
     model_config = config['model']

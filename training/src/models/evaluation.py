@@ -1,18 +1,17 @@
 import torch
 import torch.nn as nn
+import os
 from typing import Tuple, Optional, Dict, List
 from pathlib import Path
 
 from ..utils import load_binary_config, load_multiclass_config
 
-class HierarchicalPipeline(nn.Module):
+class Evaluation(nn.Module):
     def __init__(
             self,
-            binary_model: nn.Module,
-            multiclass_model: nn.Module,
             device: torch.device = None
     ):
-        super(HierarchicalPipeline, self).__init__()
+        super(Evaluation, self).__init__()
 
         self.binary_config = load_binary_config()
         self.multiclass_config = load_multiclass_config()
@@ -22,32 +21,11 @@ class HierarchicalPipeline(nn.Module):
         self.binary_num_classes = self.binary_config['model']['num_classes']
         self.multiclass_num_classes = self.multiclass_config['model']['num_classes']
 
-        self.binary_model = binary_model
-        self.multiclass_model = multiclass_model
-
         if device is None:
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.device = device
 
-        self.binary_model = self.binary_model.to(self.device)
-        self.multiclass_model = self.multiclass_model.to(self.device)
-        self.binary_model.eval()
-        self.multiclass_model.eval()
-
-        print(f"\n{'=' * 60}")
-        print("PIPELINE HIERÁRQUICO INICIALIZADO")
-        print(f"{'=' * 60}")
-        print(f"Configurações:")
-        print(f"  Device: {self.device}")
-        print(f"\nModelo Binário:")
-        print(f"  Classes: {self.binary_class_names}")
-        print(f"  Número de classes: {self.binary_num_classes}")
-        print(f"\nModelo Multiclasse:")
-        print(f"  Classes: {self.multiclass_class_names}")
-        print(f"  Número de classes: {self.multiclass_num_classes}")
-        print(f"{'=' * 60}\n")
-
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def _forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         with torch.no_grad():
             binary_output = self.binary_model(x)
             binary_pred = torch.argmax(binary_output, dim=1)
@@ -65,7 +43,7 @@ class HierarchicalPipeline(nn.Module):
 
         x = x.to(self.device)
 
-        binary_output, multiclass_output = self.forward(x)
+        binary_output, multiclass_output = self._forward(x)
 
         binary_probs = torch.softmax(binary_output, dim=1)
         binary_class_idx = torch.argmax(binary_probs, dim=1).item()
@@ -113,7 +91,7 @@ class HierarchicalPipeline(nn.Module):
         x = x.to(self.device)
         batch_size = x.shape[0]
 
-        binary_output, multiclass_output = self.forward(x)
+        binary_output, multiclass_output = self._forward(x)
 
         results = []
 
@@ -169,11 +147,11 @@ class HierarchicalPipeline(nn.Module):
             multiclass_path: str = None
     ):
         if binary_path is None:
-            binary_checkpoint_path = self.binary_config['checkpoint']['save_path']
+            binary_checkpoint_path = os.path.join(os.path.dirname(__file__), str(self.binary_config['checkpoint']['save_path']))
             binary_path = str(Path(binary_checkpoint_path) / "best_model.pth")
 
         if multiclass_path is None:
-            multiclass_checkpoint_path = self.multiclass_config['checkpoint']['save_path']
+            multiclass_checkpoint_path = os.path.join(os.path.dirname(__file__), str(self.multiclass_config['checkpoint']['save_path']))
             multiclass_path = str(Path(multiclass_checkpoint_path) / "best_model.pth")
 
         print(f"\n{'-' * 60}")
@@ -227,12 +205,12 @@ class HierarchicalPipeline(nn.Module):
             'binary_model': {
                 'num_classes': self.binary_num_classes,
                 'class_names': self.binary_class_names,
-                'checkpoint_path': self.binary_config['checkpoint']['save_path']
+                'checkpoint_path': os.path.join(os.path.dirname(__file__), str(self.binary_config['checkpoint']['save_path']))
             },
             'multiclass_model': {
                 'num_classes': self.multiclass_num_classes,
                 'class_names': self.multiclass_class_names,
-                'checkpoint_path': self.multiclass_config['checkpoint']['save_path']
+                'checkpoint_path': os.path.join(os.path.dirname(__file__), str(self.multiclass_config['checkpoint']['save_path']))
             },
             'training_config': {
                 'binary': {
@@ -268,7 +246,7 @@ class HierarchicalPipeline(nn.Module):
             for class_name, prob in multiclass_pred['probabilities'].items():
                 print(f"    {class_name}: {prob * 100:.2f}%")
 
-        print(f"\n{'─' * 60}")
+        print(f"\n{'-' * 60}")
         print(f"PREDIÇÃO FINAL: {result['final_prediction']}")
         print(f"CONFIANÇA: {result['final_confidence'] * 100:.2f}%")
         print(f"{'-' * 60}\n")

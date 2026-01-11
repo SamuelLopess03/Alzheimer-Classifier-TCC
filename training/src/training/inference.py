@@ -29,10 +29,10 @@ def setup_training_environment(is_multiclass: bool) -> Dict:
     training_config = config['training']
     checkpoint_config = config['checkpoint']
 
-    save_path = checkpoint_config['save_path']
+    save_path = os.path.join(os.path.dirname(__file__), str(checkpoint_config['save_path']) )
     os.makedirs(save_path, exist_ok=True)
 
-    gradcam_path = Path("../../../shared/outputs/gradcam")
+    gradcam_path = Path(os.path.join(os.path.dirname(__file__), "../shared/outputs/gradcam"))
     gradcam_path.mkdir(parents=True, exist_ok=True)
 
     model_type = "Multiclasse" if is_multiclass else "Binário"

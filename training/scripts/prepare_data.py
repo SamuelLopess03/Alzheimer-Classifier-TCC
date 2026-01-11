@@ -72,7 +72,6 @@ def verify_datasets(output_path: str):
             all_valid = False
             continue
 
-
     if all_valid:
         print("TODOS OS DATASETS SÃO VÁLIDOS")
     else:
@@ -95,9 +94,14 @@ def prepare_data():
         verify_datasets(args.output_path)
         return
 
+    splits_paste = os.path.join(args.output_path, 'splits')
+    if os.path.exists(os.path.join(splits_paste, 'multiclass')):
+        print(f"Dados do Dataset já Foram Baixados e Preparados.\n")
+        return
+
     os.makedirs(args.output_path, exist_ok=True)
     os.makedirs(os.path.join(args.output_path, 'raw'), exist_ok=True)
-    os.makedirs(os.path.join(args.output_path, 'splits'), exist_ok=True)
+    os.makedirs(splits_paste, exist_ok=True)
 
     success, classes = download_kaggle_dataset(
         dataset_name=args.kaggle_dataset,
