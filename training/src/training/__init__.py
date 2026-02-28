@@ -14,8 +14,12 @@ from .trainer import (
     get_training_config
 )
 
-from .inference import (
+from .final_trainer import (
     train_final_model
+)
+
+from .evaluation import (
+    evaluate_model
 )
 
 __all__ = [
@@ -33,6 +37,9 @@ __all__ = [
     "train_epoch",
     "get_training_config",
 
-    # Inference Functions
-    "train_final_model"
+    # Final Training Functions
+    "train_final_model",
+
+    # Evaluation Functions
+    "evaluate_model",
 ]

@@ -23,15 +23,14 @@ def train_epoch(
         device: torch.device,
         apply_clipping: bool = True,
         max_grad_norm: float = 1.0,
-        use_amp: bool = True
+        use_amp: bool = True,
+        scaler: GradScaler = None
 ) -> Tuple[float, float]:
     model.train()
 
     running_loss = 0.0
     correct_predictions = 0
     total_samples = 0
-
-    scaler = GradScaler(device='cuda') if use_amp and device.type == 'cuda' else None
 
     for batch_idx, (inputs, labels) in enumerate(train_loader):
         try:
@@ -201,6 +200,8 @@ def train_holdout_model(
     best_metrics = None
     patience_counter = 0
 
+    scaler = GradScaler(device='cuda') if mixed_precision and device.type == 'cuda' else None
+
     print("Criando dataset de validação (preprocessing estático)...\n")
     val_dataset = StaticPreprocessedDataset(
         subset_dataset=val_split,
@@ -242,7 +243,8 @@ def train_holdout_model(
             device=device,
             apply_clipping=use_gradient_clipping,
             max_grad_norm=max_grad_norm,
-            use_amp=mixed_precision
+            use_amp=mixed_precision,
+            scaler=scaler
         )
 
         y_true, y_pred, y_pred_proba, val_loss = validation_epoch(

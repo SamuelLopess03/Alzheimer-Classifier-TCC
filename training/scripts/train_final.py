@@ -15,10 +15,10 @@ DEFAULT_MODELS_PATH = os.path.join(os.path.dirname(__file__), '..', 'shared', 'm
 
 PIPELINE_STEPS = {
     'prepare_data': 'Preparação de Dados',
-    'train_binary': 'Treinamento Binário',
-    'train_multiclass': 'Treinamento Multiclasse',
-    'inference_binary': 'Inferência Final Binário',
-    'inference_multiclass': 'Inferência Final Multiclasse'
+    'train_binary': 'Treinamento Binário (Grid Search)',
+    'train_multiclass': 'Treinamento Multiclasse (Grid Search)',
+    'final_training_binary': 'Treinamento Final + Avaliação Binário',
+    'final_training_multiclass': 'Treinamento Final + Avaliação Multiclasse'
 }
 
 def print_banner(title: str, subtitle: Optional[str] = None):
@@ -106,12 +106,12 @@ def run_pipeline(args):
         print("Treinamento multiclasse será executado\n")
 
     if args.inference_binary:
-        pipeline_steps.append('inference_binary')
-        print("Inferência binária será executada\n")
+        pipeline_steps.append('final_training_binary')
+        print("Treinamento final + avaliação binária será executada\n")
 
     if args.inference_multiclass:
-        pipeline_steps.append('inference_multiclass')
-        print("Inferência multiclasse será executada\n")
+        pipeline_steps.append('final_training_multiclass')
+        print("Treinamento final + avaliação multiclasse será executada\n")
 
     if not pipeline_steps:
         print("Nenhuma etapa específica selecionada")
@@ -121,8 +121,8 @@ def run_pipeline(args):
             'prepare_data',
             'train_binary',
             'train_multiclass',
-            'inference_binary',
-            'inference_multiclass'
+            'final_training_binary',
+            'final_training_multiclass'
         ]
 
     total_steps = len(pipeline_steps)
@@ -159,10 +159,10 @@ def run_pipeline(args):
             elif step == 'train_multiclass':
                 success = execute_train_multiclass_func()
 
-            elif step == 'inference_binary':
+            elif step == 'final_training_binary':
                 success = execute_inference(args, 'binary')
 
-            elif step == 'inference_multiclass':
+            elif step == 'final_training_multiclass':
                 success = execute_inference(args, 'multiclass')
 
         except KeyboardInterrupt:

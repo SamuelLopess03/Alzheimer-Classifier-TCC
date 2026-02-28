@@ -22,7 +22,7 @@ data:
   data_path: "../shared/data/splits/multiclass"
   split_ratios:
     train: 0.8
-    val: 0.2
+    train_val: 0.2
     test: 0.2
   stratify: true
   random_seed: 42
@@ -48,8 +48,8 @@ data:
         1: 0.23  # Moderate: 18% do dataset final
 
 training:
-  epochs: 5
-  patience: 3  # Early stopping
+  epochs: 500
+  patience: 50  # Early stopping
   min_delta: 0.001
 
   # Scheduler

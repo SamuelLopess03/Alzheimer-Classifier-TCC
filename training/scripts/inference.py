@@ -9,7 +9,7 @@ import torch.optim as optim
 from torchvision import datasets as tv_datasets
 
 from src.models import create_model_with_architecture
-from src.training import train_final_model, get_training_config
+from src.training import train_final_model, evaluate_model, get_training_config
 from src.utils import load_hyperparameters_config, create_stratified_holdout_split
 
 DEFAULT_EXPERIMENTS_PATH = os.path.join(os.path.dirname(__file__), '..', 'shared/logs/experiments')
@@ -176,7 +176,7 @@ def create_train_val_splits(
     data_config = config['data']
 
     train_ratio = data_config['split_ratios']['train']
-    val_ratio = data_config['split_ratios']['val']
+    val_ratio = data_config['split_ratios']['train_val']
     random_seed = data_config['random_seed']
 
     print("Criando splits estratificados...\n")
@@ -194,7 +194,8 @@ def create_train_val_splits(
     return train_split, val_split
 
 def save_final_results(
-        results: Dict,
+        training_results: Dict,
+        evaluation_results: Dict,
         best_experiment: Dict,
         hyperparameters: Dict,
         models_path: str
@@ -202,13 +203,15 @@ def save_final_results(
     final_results = {
         'best_experiment': best_experiment,
         'hyperparameters': hyperparameters,
-        'final_results': {
-            'best_epoch': results['best_epoch'],
-            'best_val_f1': results['best_val_f1'],
-            'test_metrics': results['test_metrics']
+        'training_results': {
+            'best_epoch': training_results['best_epoch'],
+            'best_val_f1': training_results['best_val_f1'],
         },
-        'checkpoint_path': results['checkpoint_path'],
-        'gradcam_path': results.get('gradcam_path')
+        'evaluation_results': {
+            'test_metrics': evaluation_results['test_metrics'],
+        },
+        'checkpoint_path': training_results['checkpoint_path'],
+        'gradcam_path': evaluation_results.get('gradcam_path')
     }
 
     output_dir = Path(models_path)
@@ -231,7 +234,7 @@ def print_hyperparameters(hyperparameters: Dict):
 def inference(args, model_type: str = 'binary',
               generate_gradcam: bool = True, gradcam_samples: int = 10):
     print(f"\n{'=' * 80}")
-    print("TREINAMENTO E INFERÊNCIA FINAL DO MODELO")
+    print("PIPELINE: TREINAMENTO FINAL + AVALIAÇÃO")
     print(f"{'=' * 80}\n")
 
     hyperparams_config = load_hyperparameters_config()
@@ -273,28 +276,34 @@ def inference(args, model_type: str = 'binary',
         is_multiclass=is_multiclass
     )
 
-    print(f"{'-' * 60}")
-    print("INICIANDO TREINAMENTO FINAL")
-    print(f"{'-' * 60}\n")
-
-    results = train_final_model(
+    training_results = train_final_model(
         model=model,
         criterion=criterion,
         optimizer=optimizer,
         train_split=train_split,
         val_split=val_split,
-        test_split=test_dataset,
         hyperparameters=hyperparameters,
         device=device,
         is_multiclass=is_multiclass,
         use_gradient_clipping=hyperparameters.get('use_gradient_clipping', True),
         max_grad_norm=hyperparameters.get('max_grad_norm', 1.0),
+    )
+
+    evaluation_results = evaluate_model(
+        model=model,
+        criterion=criterion,
+        optimizer=optimizer,
+        test_dataset=test_dataset,
+        training_results=training_results,
+        hyperparameters=hyperparameters,
+        device=device,
         generate_gradcam=args.generate_gradcam if args.generate_gradcam else generate_gradcam,
         gradcam_samples=args.gradcam_samples if args.gradcam_samples else gradcam_samples
     )
 
     results_file = save_final_results(
-        results=results,
+        training_results=training_results,
+        evaluation_results=evaluation_results,
         best_experiment=best_experiment,
         hyperparameters=hyperparameters,
         models_path=os.path.join(DEFAULT_MODELS_PATH, model_type)
@@ -303,23 +312,25 @@ def inference(args, model_type: str = 'binary',
     print(f"\nResultados finais salvos em: {results_file}")
 
     print(f"\n{'=' * 80}")
-    print("TREINAMENTO E TESTE FINAL CONCLUÍDO COM SUCESSO!")
+    print("PIPELINE CONCLUÍDA COM SUCESSO!")
+    print(f"  Fase 2 (Treinamento): Melhor F1 = {training_results['best_val_f1'] * 100:.2f}%")
+    print(f"  Fase 3 (Avaliação): Test F1 = {evaluation_results['test_metrics']['f1_score'] * 100:.2f}%")
     print(f"{'=' * 80}\n")
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Treinamento final com melhores hiperparâmetros do grid search",
+        description="Treinamento final com melhores hiperparâmetros + avaliação no test set",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
                 Exemplos de uso:
-                  # Treinamento binário com Grad-CAM
-                  python train_final.py --model_type binary --generate_gradcam
+                  # Treinamento + avaliação binário com Grad-CAM
+                  python inference.py --model_type binary --generate_gradcam
                 
-                  # Treinamento multiclasse com 15 amostras Grad-CAM
-                  python train_final.py --model_type multiclass --generate_gradcam --gradcam_samples 15
+                  # Treinamento + avaliação multiclasse com 15 amostras Grad-CAM
+                  python inference.py --model_type multiclass --generate_gradcam --gradcam_samples 15
                 
                   # Com caminhos personalizados
-                  python train_final.py --model_type binary --experiments_path /custom/path --data_path /data/path
+                  python inference.py --model_type binary --experiments_path /custom/path --data_path /data/path
                """
     )
 
@@ -328,7 +339,7 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         default='binary',
         choices=['binary', 'multiclass'],
-        help="Tipo do modelo: 'binary' ou 'multiclass' (padrão: multiclass)"
+        help="Tipo do modelo: 'binary' ou 'multiclass' (padrão: binary)"
     )
 
     parser.add_argument(
@@ -365,7 +376,8 @@ def parse_arguments() -> argparse.Namespace:
         help="Número de amostras Grad-CAM (padrão: 10)"
     )
 
-    return parser.parse_args()
+    args, _ = parser.parse_known_args()
+    return args
 
 if __name__ == "__main__":
     args = parse_arguments()

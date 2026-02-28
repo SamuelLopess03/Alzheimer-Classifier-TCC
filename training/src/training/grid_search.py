@@ -306,7 +306,7 @@ def search_best_hyperparameters_holdout(
     early_stopping_patience = training_config['patience']
 
     train_ratio = data_config['split_ratios']['train']
-    val_ratio = data_config['split_ratios']['val']
+    val_ratio = data_config['split_ratios']['train_val']
     random_seed = data_config['random_seed']
     stratify = data_config['stratify']
 

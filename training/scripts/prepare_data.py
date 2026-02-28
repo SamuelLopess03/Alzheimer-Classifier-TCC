@@ -50,7 +50,8 @@ def parse_args():
         help='Only verify existing datasets'
     )
 
-    return parser.parse_args()
+    args, _ = parser.parse_known_args()
+    return args
 
 def verify_datasets(output_path: str):
     print(f"\n{'-' * 60}")

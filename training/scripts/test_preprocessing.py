@@ -353,7 +353,7 @@ def main():
         help='Estratégia de balanceamento (usa config do YAML se não especificado)'
     )
 
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     print("\n" + "=" * 80)
     print(" " * 20 + "TESTE DE PREPROCESSING E AUGMENTATION")
