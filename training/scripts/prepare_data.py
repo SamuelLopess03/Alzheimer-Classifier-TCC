@@ -2,9 +2,11 @@ import argparse
 import shutil
 import sys
 import os
+import time
+import json
 
 from src.data import prepare_dataset_binary, prepare_dataset_multiclass
-from src.utils import download_kaggle_dataset
+from src.utils import download_kaggle_dataset, validate_image_files
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -45,9 +47,9 @@ def parse_args():
     )
 
     parser.add_argument(
-        '--verify',
+        '--validate',
         action='store_true',
-        help='Only verify existing datasets'
+        help='Validate image integrity during preparation'
     )
 
     args, _ = parser.parse_known_args()
@@ -92,7 +94,19 @@ def prepare_data():
     print(f"   Output Path: {args.output_path}\n")
 
     if args.verify:
-        verify_datasets(args.output_path)
+        all_valid = verify_datasets(args.output_path)
+        
+        if args.validate:
+            print(f"\n{'-' * 60}")
+            print("VALIDANDO INTEGRIDADE DOS ARQUIVOS (OPCIONAL)")
+            print(f"{'-' * 60}")
+            v, c, err = validate_image_files(args.output_path)
+            print(f"Resultado: {v} imagens válidas, {c} corrompidas.")
+            if err:
+                print("\nArquivos corrompidos detectados:")
+                for e in err[:10]: print(f"  - {e}")
+                if len(err) > 10: print(f"  ... e mais {len(err)-10}")
+
         return
 
     splits_paste = os.path.join(args.output_path, 'splits')
@@ -155,6 +169,35 @@ def prepare_data():
     print("-" * 60 + "\n")
 
     all_valid = verify_datasets(args.output_path)
+
+    print("\n" + "-" * 60)
+    print("ETAPA 4: GERAÇÃO DE METADADOS")
+    print("-" * 60 + "\n")
+
+    metadata = {
+        'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
+        'kaggle_dataset': args.kaggle_dataset,
+        'splits': {}
+    }
+
+    for split_name, split_path in [('binary', os.path.join(args.output_path, 'splits/binary')), 
+                                   ('multiclass', os.path.join(args.output_path, 'splits/multiclass'))]:
+        if os.path.exists(split_path):
+            metadata['splits'][split_name] = {}
+            for phase in ['train', 'test']:
+                phase_path = os.path.join(split_path, phase)
+                if os.path.exists(phase_path):
+                    metadata['splits'][split_name][phase] = {}
+                    for class_name in os.listdir(phase_path):
+                        class_path = os.path.join(phase_path, class_name)
+                        if os.path.isdir(class_path):
+                            count = len([f for f in os.listdir(class_path) if f.lower().endswith(('.jpg', '.jpeg'))])
+                            metadata['splits'][split_name][phase][class_name] = count
+
+    metadata_file = os.path.join(args.output_path, 'split_metadata.json')
+    with open(metadata_file, 'w') as f:
+        json.dump(metadata, f, indent=4)
+    print(f"Metadados gerados em: {metadata_file}\n")
 
     print(f"\n{'-' * 60}")
     if all_valid:

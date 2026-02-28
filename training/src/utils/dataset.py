@@ -1,4 +1,5 @@
 import os
+from PIL import Image
 import zipfile
 import shutil
 from typing import Tuple, Optional, List
@@ -184,3 +185,24 @@ def split_dataset_train_test(
     print("-" * 60)
 
     return train_dataset, test_dataset
+    
+def validate_image_files(directory: str) -> Tuple[int, int, List[str]]:
+    valid_count = 0
+    corrupt_count = 0
+    errors = []
+
+    print(f"\nValidando imagens em: {directory}")
+
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.lower().endswith(('.jpg', '.jpeg', '.png')):
+                filepath = os.path.join(root, file)
+                try:
+                    with Image.open(filepath) as img:
+                        img.verify()
+                    valid_count += 1
+                except Exception as e:
+                    corrupt_count += 1
+                    errors.append(f"{filepath}: {str(e)}")
+
+    return valid_count, corrupt_count, errors
