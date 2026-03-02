@@ -11,7 +11,8 @@ from ..utils import load_augmentation_config
 def get_alzheimer_grayscale_augmentation(
         architecture_name: str,
         dataset_size: int,
-        is_training: bool = True
+        is_training: bool = True,
+        for_synthetic: bool = False
 ) -> alb.Compose:
     preprocessor = MedicalImagePreprocessor(architecture_name)
     config = preprocessor.config
@@ -20,6 +21,16 @@ def get_alzheimer_grayscale_augmentation(
     is_transformer = architecture_name.lower() in ['vit_b_16', 'swin_v2_tiny']
 
     if is_training:
+        if for_synthetic:
+            print(f"   [Augmentação de Segurança para Amostras Sintéticas]")
+            augmentations = [
+                alb.Resize(config["image_size"], config["image_size"]),
+                alb.HorizontalFlip(p=0.5),
+                alb.Normalize(mean=config["mean"], std=config["std"]),
+                ToTensorV2()
+            ]
+            return alb.Compose(augmentations)
+
         thresholds = aug_config['dataset_size_thresholds']
 
         if dataset_size < thresholds['small']:
@@ -290,7 +301,7 @@ def create_synthetic_augmentation_for_minority(
         ]
 
     return alb.Compose(augmentations)
-
+    
 class DynamicAugmentationDataset(Dataset):
     def __init__(self, subset_dataset: Subset, architecture_name: str):
         self.subset_dataset = subset_dataset
@@ -299,20 +310,44 @@ class DynamicAugmentationDataset(Dataset):
         self.transform = get_alzheimer_grayscale_augmentation(
             architecture_name=architecture_name,
             dataset_size=len(subset_dataset),
-            is_training=True
+            is_training=True,
+            for_synthetic=False
+        )
+        
+        self.synthetic_transform = get_alzheimer_grayscale_augmentation(
+            architecture_name=architecture_name,
+            dataset_size=len(subset_dataset),
+            is_training=True,
+            for_synthetic=True
         )
 
     def __len__(self):
         return len(self.subset_dataset)
 
-    def __getitem__(self, idx):
-        image, label = self.subset_dataset[idx]
+    def _is_idx_synthetic(self, idx: int) -> bool:
+        base_dataset = self.subset_dataset
+        
+        while hasattr(base_dataset, 'dataset'):
+            if hasattr(base_dataset, 'indices'):
+                idx = base_dataset.indices[idx]
+            base_dataset = base_dataset.dataset
+            
+        if hasattr(base_dataset, 'is_synthetic'):
+            return base_dataset.is_synthetic(idx)
+        return False
 
+    def __getitem__(self, idx):
+        is_synthetic = self._is_idx_synthetic(idx)
+        
+        image, label = self.subset_dataset[idx]
         image = prepare_image_for_augmentation(image)
 
-        transformed = self.transform(image=image)
+        if is_synthetic:
+            transformed = self.synthetic_transform(image=image)
+        else:
+            transformed = self.transform(image=image)
+            
         processed_image = transformed['image']
-
         return processed_image, label
 
 class StaticPreprocessedDataset(Dataset):
@@ -365,6 +400,9 @@ class SyntheticAugmentedDataset(Dataset):
 
     def __len__(self):
         return len(self.original_dataset) + self.num_synthetic_copies
+
+    def is_synthetic(self, idx: int) -> bool:
+        return idx >= len(self.original_dataset)
 
     def __getitem__(self, idx):
         if idx < len(self.original_dataset):
