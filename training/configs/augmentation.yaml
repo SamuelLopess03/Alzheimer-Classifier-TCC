@@ -25,13 +25,12 @@ train_heavy_cnn:
     enabled: true
     scale: [0.95, 1.05]
     translate_percent: [-0.05, 0.05]
-    rotate: [-3, 3]
     probability: 0.3
 
   clahe:
     enabled: true
     clip_limit: 2.0
-    tile_grid_size: [4, 4]
+    tile_grid_size: [8, 8]
     probability: 0.7
 
   brightness_contrast:
@@ -71,7 +70,7 @@ train_heavy_transformer:
   clahe:
     enabled: true
     clip_limit: 1.5
-    tile_grid_size: [6, 6]
+    tile_grid_size: [8, 8]
     probability: 0.5
 
   brightness_contrast:
@@ -80,8 +79,19 @@ train_heavy_transformer:
     contrast_limit: 0.1
     probability: 0.4
 
+  affine:
+    enabled: true
+    scale: [0.97, 1.03]
+    translate_percent: [-0.03, 0.03]
+    probability: 0.2
+
+  random_gamma:
+    enabled: true
+    gamma_limit: [95, 105]
+    probability: 0.3
+
 # Augmentações para treino - Dataset Médio (<50k)
-train_moderate:
+train_moderate_cnn:
   resize:
     enabled: true
     size: null  # Definido por MedicalImagePreprocessor
@@ -98,7 +108,7 @@ train_moderate:
   clahe:
     enabled: true
     clip_limit: 1.5
-    tile_grid_size: [6, 6]
+    tile_grid_size: [8, 8]
     probability: 0.5
 
   brightness_contrast:
@@ -117,8 +127,45 @@ train_moderate:
     blur_limit: [1, 2]
     probability: 0.1
 
+train_moderate_transformer:
+  resize:
+    enabled: true
+    size: null  # Definido por MedicalImagePreprocessor
+
+  horizontal_flip:
+    enabled: true
+    probability: 0.4
+
+  rotation:
+    enabled: true
+    limit: 3
+    probability: 0.25
+
+  clahe:
+    enabled: true
+    clip_limit: 1.5
+    tile_grid_size: [8, 8]
+    probability: 0.5
+
+  brightness_contrast:
+    enabled: true
+    brightness_limit: 0.08
+    contrast_limit: 0.1
+    probability: 0.4
+
+  affine:
+    enabled: true
+    scale: [0.98, 1.02]
+    translate_percent: [-0.02, 0.02]
+    probability: 0.15
+
+  random_gamma:
+    enabled: true
+    gamma_limit: [95, 105]
+    probability: 0.25
+
 # Augmentações para treino - Dataset Grande (≥50k)
-train_light:
+train_light_cnn:
   resize:
     enabled: true
     size: null  # Definido por MedicalImagePreprocessor
@@ -144,19 +191,47 @@ train_light:
     contrast_limit: 0.05
     probability: 0.2
 
+train_light_transformer:
+  resize:
+    enabled: true
+    size: null  # Definido por MedicalImagePreprocessor
+
+  horizontal_flip:
+    enabled: true
+    probability: 0.25
+
+  rotation:
+    enabled: true
+    limit: 2
+    probability: 0.15
+
+  clahe:
+    enabled: true
+    clip_limit: 1.2
+    tile_grid_size: [8, 8]
+    probability: 0.3
+
+  brightness_contrast:
+    enabled: true
+    brightness_limit: 0.05
+    contrast_limit: 0.05
+    probability: 0.2
+
+  random_gamma:
+    enabled: true
+    gamma_limit: [97, 103]
+    probability: 0.15
+
 # Augmentações sintéticas para classes minoritárias - CNN
 synthetic_cnn:
-  vertical_flip:
-    enabled: true
-    probability: 0.3
 
   affine:
     enabled: true
     translate_percent:
-      x: [-0.1, 0.1]
-      y: [-0.1, 0.1]
-    scale: [0.85, 1.15]
-    rotate: [-10, 10]
+      x: [-0.05, 0.05]
+      y: [-0.05, 0.05]
+    scale: [0.9, 1.1]
+    rotate: [-5, 5]
     probability: 0.6
 
   elastic_transform:
@@ -170,9 +245,10 @@ synthetic_cnn:
     scale: 0.2
     probability: 0.5
 
-  equalize:
+  perspective:
     enabled: true
-    probability: 0.3
+    scale: [0.05, 0.1]
+    probability: 0.2
 
   color_jitter:
     enabled: true
@@ -196,18 +272,32 @@ synthetic_cnn:
 
 # Augmentações sintéticas para classes minoritárias - Transformer
 synthetic_transformer:
-  vertical_flip:
-    enabled: true
-    probability: 0.3
 
   affine:
     enabled: true
     translate_percent:
-      x: [-0.08, 0.08]
-      y: [-0.08, 0.08]
-    scale: [0.9, 1.1]
-    rotate: [-7, 7]
+      x: [-0.05, 0.05]
+      y: [-0.05, 0.05]
+    scale: [0.92, 1.08]
+    rotate: [-5, 5]
     probability: 0.5
+
+  elastic_transform:
+    enabled: true
+    alpha: 1
+    sigma: 20
+    probability: 0.3
+
+  perspective:
+    enabled: true
+    scale: [0.05, 0.08]
+    probability: 0.2
+
+  grid_distortion:
+    enabled: true
+    num_steps: 5
+    distort_limit: 0.3
+    probability: 0.3
 
   random_tone_curve:
     enabled: true
@@ -227,6 +317,12 @@ synthetic_transformer:
     std_range: [0.05, 0.15]
     mean_range: [0.0, 0.0]
     probability: 0.4
+
+  iso_noise:
+    enabled: true
+    color_shift: [0.01, 0.05]
+    intensity: [0.1, 0.25]
+    probability: 0.3
 
 # Configurações para validação e teste
 validation:

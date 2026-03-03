@@ -43,8 +43,8 @@ data:
         0: 0.40  # Very Mild: 30% do dataset final
 
 training:
-  epochs: 5
-  patience: 3  # Early stopping
+  epochs: 150
+  patience: 25  # Early stopping
   min_delta: 0.001
 
   # Scheduler
