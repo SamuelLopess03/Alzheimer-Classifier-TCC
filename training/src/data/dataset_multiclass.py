@@ -16,6 +16,7 @@ def prepare_dataset_multiclass(
     train_ratio = data_config['split_ratios']['train']
     random_state = data_config['random_seed']
     class_names = model_config['class_names']
+    merge_classes = model_config.get('merge_classes', {})
     filter_non_demented = model_config.get('filter_non_demented', True)
 
     print(f"{'-' * 60}")
@@ -25,6 +26,7 @@ def prepare_dataset_multiclass(
     print(f"   Train Ratio: {train_ratio}")
     print(f"   Random Seed: {random_state}")
     print(f"   Classes: {class_names}")
+    print(f"   Merge Classes: {merge_classes}")
     print(f"   Filtrar Non Demented: {filter_non_demented}\n")
 
     train_path = os.path.join(output_base_path, "splits/multiclass/train")
@@ -52,31 +54,61 @@ def prepare_dataset_multiclass(
     stats = {}
     total_images = 0
 
-    print("Copiando imagens das classes de demência...\n")
+    print("Preparando classes do dataset multiclasse...\n")
 
-    for dementia_class in class_names:
-        class_path = os.path.join(raw_dataset_path, dementia_class)
-
-        if not os.path.exists(class_path):
-            print(f"Classe {dementia_class} não encontrada, pulando...")
-            continue
-
-        output_class_path = os.path.join(temp_path, dementia_class)
+    for class_name in class_names:
+        output_class_path = os.path.join(temp_path, class_name)
         os.makedirs(output_class_path, exist_ok=True)
 
-        images = [f for f in os.listdir(class_path)
-                  if f.lower().endswith(('.jpg', '.jpeg'))]
+        if class_name in merge_classes:
+            source_folders = merge_classes[class_name]
+            print(f"Classe '{class_name}' (merge de: {source_folders}):")
 
-        for image in images:
-            src = os.path.join(class_path, image)
-            dst = os.path.join(output_class_path, image)
-            shutil.copy2(src, dst)
+            class_count = 0
+            for source_folder in source_folders:
+                source_path = os.path.join(raw_dataset_path, source_folder)
 
-        stats[dementia_class] = len(images)
-        total_images += len(images)
-        print(f"{dementia_class}: {len(images)} imagens copiadas")
+                if not os.path.exists(source_path):
+                    print(f"  AVISO: Pasta '{source_folder}' não encontrada, pulando...")
+                    continue
 
-    print(f"\nDividindo dataset (train: {train_ratio * 100:.0f}%, test: {(1 - train_ratio) * 100:.0f}%)...\n")
+                images = [f for f in os.listdir(source_path)
+                          if f.lower().endswith(('.jpg', '.jpeg'))]
+
+                for image in images:
+                    src = os.path.join(source_path, image)
+                    new_filename = f"{source_folder.replace(' ', '_')}_{image}"
+                    dst = os.path.join(output_class_path, new_filename)
+                    shutil.copy2(src, dst)
+
+                print(f"  {source_folder}: {len(images)} imagens copiadas")
+                class_count += len(images)
+
+            stats[class_name] = class_count
+            total_images += class_count
+            print(f"  Total da classe: {class_count} imagens\n")
+
+        else:
+            source_path = os.path.join(raw_dataset_path, class_name)
+
+            if not os.path.exists(source_path):
+                print(f"Classe '{class_name}' não encontrada, pulando...")
+                continue
+
+            images = [f for f in os.listdir(source_path)
+                      if f.lower().endswith(('.jpg', '.jpeg'))]
+
+            for image in images:
+                src = os.path.join(source_path, image)
+                dst = os.path.join(output_class_path, image)
+                shutil.copy2(src, dst)
+
+            stats[class_name] = len(images)
+            total_images += len(images)
+            print(f"{class_name}: {len(images)} imagens copiadas")
+
+    print(f"\nTotal de imagens: {total_images}")
+    print(f"Dividindo dataset por sujeito (train: {train_ratio * 100:.0f}%, test: {(1 - train_ratio) * 100:.0f}%)...\n")
 
     train_dataset, test_dataset = split_dataset_train_test(
         dataset_path=temp_path,

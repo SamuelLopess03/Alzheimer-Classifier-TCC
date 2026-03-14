@@ -11,8 +11,7 @@ from ..utils import load_augmentation_config
 def get_alzheimer_grayscale_augmentation(
         architecture_name: str,
         dataset_size: int,
-        is_training: bool = True,
-        for_synthetic: bool = False
+        is_training: bool = True
 ) -> alb.Compose:
     preprocessor = MedicalImagePreprocessor(architecture_name)
     config = preprocessor.config
@@ -21,16 +20,6 @@ def get_alzheimer_grayscale_augmentation(
     is_transformer = architecture_name.lower() in ['vit_b_16', 'swin_v2_tiny']
 
     if is_training:
-        if for_synthetic:
-            print(f"   [Augmentação de Segurança para Amostras Sintéticas]")
-            augmentations = [
-                alb.Resize(config["image_size"], config["image_size"]),
-                alb.HorizontalFlip(p=0.5),
-                alb.Normalize(mean=config["mean"], std=config["std"]),
-                ToTensorV2()
-            ]
-            return alb.Compose(augmentations)
-
         thresholds = aug_config['dataset_size_thresholds']
 
         if dataset_size < thresholds['small']:
@@ -261,6 +250,8 @@ def get_alzheimer_grayscale_augmentation(
 def create_synthetic_augmentation_for_minority(
         architecture_name: str
 ) -> alb.Compose:
+    preprocessor = MedicalImagePreprocessor(architecture_name)
+    config = preprocessor.config
     aug_config = load_augmentation_config()
     is_transformer = architecture_name.lower() in ['vit_b_16', 'swin_v2_tiny']
 
@@ -277,8 +268,6 @@ def create_synthetic_augmentation_for_minority(
         std_range = (float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1]))
         mean_range = (float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1]))
         perspective_scale = (float(cfg['perspective']['scale'][0]), float(cfg['perspective']['scale'][1]))
-        iso_color_shift = (float(cfg['iso_noise']['color_shift'][0]), float(cfg['iso_noise']['color_shift'][1]))
-        iso_intensity = (float(cfg['iso_noise']['intensity'][0]), float(cfg['iso_noise']['intensity'][1]))
 
         augmentations = [
             # Transformações geométricas
@@ -310,29 +299,20 @@ def create_synthetic_augmentation_for_minority(
                 scale=cfg['random_tone_curve']['scale'],
                 p=cfg['random_tone_curve']['probability']
             ),
-            alb.ColorJitter(
-                brightness=cfg['color_jitter']['brightness'],
-                contrast=cfg['color_jitter']['contrast'],
-                saturation=cfg['color_jitter']['saturation'],
-                hue=cfg['color_jitter']['hue'],
-                p=cfg['color_jitter']['probability']
-            ),
             # Ruído
             alb.GaussNoise(
                 std_range=std_range,
                 mean_range=mean_range,
                 p=cfg['gauss_noise']['probability']
             ),
-            alb.ISONoise(
-                color_shift=iso_color_shift,
-                intensity=iso_intensity,
-                p=cfg['iso_noise']['probability']
-            ),
             alb.MultiplicativeNoise(
                 multiplier=(0.9, 1.1),
                 per_channel=False,
                 p=0.2
             ),
+            alb.Resize(config["image_size"], config["image_size"]),
+            alb.Normalize(mean=config["mean"], std=config["std"]),
+            ToTensorV2()
         ]
     else:
         cfg = aug_config['synthetic_cnn']
@@ -372,13 +352,6 @@ def create_synthetic_augmentation_for_minority(
                 scale=cfg['random_tone_curve']['scale'],
                 p=cfg['random_tone_curve']['probability']
             ),
-            alb.ColorJitter(
-                brightness=cfg['color_jitter']['brightness'],
-                contrast=cfg['color_jitter']['contrast'],
-                saturation=cfg['color_jitter']['saturation'],
-                hue=cfg['color_jitter']['hue'],
-                p=cfg['color_jitter']['probability']
-            ),
             # Blur controlado
             alb.MotionBlur(
                 blur_limit=5,
@@ -390,16 +363,14 @@ def create_synthetic_augmentation_for_minority(
                 mean_range=mean_range,
                 p=cfg['gauss_noise']['probability']
             ),
-            alb.ISONoise(
-                color_shift=(float(cfg['iso_noise']['color_shift'][0]), float(cfg['iso_noise']['color_shift'][1])),
-                intensity=(float(cfg['iso_noise']['intensity'][0]), float(cfg['iso_noise']['intensity'][1])),
-                p=cfg['iso_noise']['probability']
-            ),
             alb.MultiplicativeNoise(
                 multiplier=(0.9, 1.1),
                 per_channel=False,
                 p=0.2
-            )
+            ),
+            alb.Resize(config["image_size"], config["image_size"]),
+            alb.Normalize(mean=config["mean"], std=config["std"]),
+            ToTensorV2()
         ]
 
     return alb.Compose(augmentations)
@@ -409,18 +380,33 @@ class DynamicAugmentationDataset(Dataset):
         self.subset_dataset = subset_dataset
         self.architecture_name = architecture_name
 
+        # OTIMIZAÇÃO: Basear o nível de augmentação na quantidade de SUJEITOS Reais, não fatias.
+        # Isso evita que o modelo use augmentação "Leve" só porque temos muitas fatias sintéticas.
+        base_ds = subset_dataset
+        while hasattr(base_ds, 'dataset'):
+            base_ds = base_ds.dataset
+            
+        # Se conseguirmos contar sujeitos únicos, usamos isso como métrica de dificuldade
+        try:
+            if hasattr(base_ds, 'samples'):
+                from ..utils import extract_subject_id
+                subjects = set()
+                for path, _ in base_ds.samples:
+                    subjects.add(extract_subject_id(path))
+                dataset_size_metric = len(subjects) * 100 # Escalonamos para caber nos thresholds
+            else:
+                dataset_size_metric = len(subset_dataset)
+        except:
+            dataset_size_metric = len(subset_dataset)
+
         self.transform = get_alzheimer_grayscale_augmentation(
             architecture_name=architecture_name,
-            dataset_size=len(subset_dataset),
-            is_training=True,
-            for_synthetic=False
+            dataset_size=dataset_size_metric,
+            is_training=True
         )
         
-        self.synthetic_transform = get_alzheimer_grayscale_augmentation(
-            architecture_name=architecture_name,
-            dataset_size=len(subset_dataset),
-            is_training=True,
-            for_synthetic=True
+        self.synthetic_transform = create_synthetic_augmentation_for_minority(
+            architecture_name=architecture_name
         )
 
     def __len__(self):
@@ -439,18 +425,25 @@ class DynamicAugmentationDataset(Dataset):
         return False
 
     def __getitem__(self, idx):
+        import torch
         is_synthetic = self._is_idx_synthetic(idx)
         
-        image, label = self.subset_dataset[idx]
-        image = prepare_image_for_augmentation(image)
-
         if is_synthetic:
-            transformed = self.synthetic_transform(image=image)
+            image, label = self.subset_dataset[idx]
         else:
+            image, label = self.subset_dataset[idx]
+            image = prepare_image_for_augmentation(image)
             transformed = self.transform(image=image)
+            image = transformed['image']
+
+        # SEGURANÇA: Garante que o retorno é sempre um Tensor de Torch para evitar o erro de 'numel' no DataLoader
+        if not isinstance(image, torch.Tensor):
+            image = torch.as_tensor(image)
+        
+        # Garante o label como tensor long
+        label = torch.tensor(label, dtype=torch.long)
             
-        processed_image = transformed['image']
-        return processed_image, label
+        return image, label
 
 class StaticPreprocessedDataset(Dataset):
     def __init__(self, subset_dataset: Subset, architecture_name: str):

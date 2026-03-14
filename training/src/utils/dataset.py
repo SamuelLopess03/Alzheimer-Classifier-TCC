@@ -1,10 +1,18 @@
 import os
+import re
+import numpy as np
 from PIL import Image
 import zipfile
 import shutil
-from typing import Tuple, Optional, List
-from sklearn.model_selection import train_test_split
+from typing import Tuple, Optional, List, Dict
+from collections import defaultdict
 from torchvision import datasets
+
+def extract_subject_id(filename: str) -> str:
+    match = re.search(r'(OAS\d+_\d+)', filename)
+    if match:
+        return match.group(1)
+    raise ValueError(f"Não foi possível extrair Subject ID do arquivo: {filename}")
 
 def download_kaggle_dataset(
         dataset_name: str,
@@ -129,59 +137,108 @@ def split_dataset_train_test(
         stratify: bool = True
 ) -> Tuple[datasets.ImageFolder, datasets.ImageFolder]:
     print("\n" + "-" * 60)
-    print(f"INICIANDO DIVISÃO DO DATASET ({int(train_ratio * 100)}% TREINO / {int((1 - train_ratio) * 100)}% TESTE)")
+    print(f"INICIANDO DIVISÃO DO DATASET POR SUJEITO ({int(train_ratio * 100)}% TREINO / {int((1 - train_ratio) * 100)}% TESTE)")
     print("-" * 60 + "\n")
-    print(f"Dividindo dataset com stratification={stratify}...")
 
-    all_files = []
-    all_labels = []
+    subjects_by_class: Dict[str, List[str]] = {}
+    subject_files: Dict[str, List[Tuple[str, str]]] = defaultdict(list)
 
-    for class_idx, class_name in enumerate(classes):
+    total_files = 0
+
+    for class_name in classes:
         class_path = os.path.join(dataset_path, class_name)
         if not os.path.exists(class_path):
+            print(f"  AVISO: Classe '{class_name}' não encontrada em {dataset_path}")
+            subjects_by_class[class_name] = []
             continue
 
         images = [f for f in os.listdir(class_path)
                   if f.lower().endswith(('.jpg', '.jpeg'))]
 
+        class_subjects = set()
         for img in images:
-            all_files.append((class_name, img))
-            all_labels.append(class_idx)
+            subject_id = extract_subject_id(img)
+            class_subjects.add(subject_id)
+            subject_files[subject_id].append((class_name, img))
 
-    if stratify:
-        train_files, test_files = train_test_split(
-            all_files,
-            test_size=(1 - train_ratio),
-            random_state=random_state,
-            stratify=all_labels
-        )
-    else:
-        train_files, test_files = train_test_split(
-            all_files,
-            test_size=(1 - train_ratio),
-            random_state=random_state
-        )
+        subjects_by_class[class_name] = sorted(class_subjects)
+        total_files += len(images)
 
-    for split_files, output_path in [(train_files, output_train_path),
-                                     (test_files, output_test_path)]:
-        for class_name in classes:
-            os.makedirs(os.path.join(output_path, class_name), exist_ok=True)
+    total_subjects = sum(len(s) for s in subjects_by_class.values())
+    print(f"Dataset total: {total_files} fatias de {total_subjects} sujeitos\n")
 
-        for class_name, img in split_files:
+    for class_name, subjs in subjects_by_class.items():
+        n_slices = sum(len(subject_files[s]) for s in subjs)
+        print(f"  {class_name}: {len(subjs)} sujeitos, {n_slices} fatias")
+    print()
+
+    rng = np.random.RandomState(random_state)
+
+    train_subjects = []
+    test_subjects = []
+
+    print("Dividindo sujeitos por classe:")
+    for class_name in classes:
+        class_subjs = subjects_by_class[class_name].copy()
+        rng.shuffle(class_subjs)
+
+        n_train = max(1, int(len(class_subjs) * train_ratio))
+
+        if n_train == len(class_subjs) and len(class_subjs) > 1:
+            n_train = len(class_subjs) - 1
+
+        train_subjs = class_subjs[:n_train]
+        test_subjs = class_subjs[n_train:]
+
+        train_subjects.extend(train_subjs)
+        test_subjects.extend(test_subjs)
+
+        train_slices = sum(len(subject_files[s]) for s in train_subjs)
+        test_slices = sum(len(subject_files[s]) for s in test_subjs)
+
+        print(f"  {class_name}:")
+        print(f"    Treino: {len(train_subjs)} sujeitos ({train_slices} fatias)")
+        print(f"    Teste:  {len(test_subjs)} sujeitos ({test_slices} fatias)")
+
+    print()
+
+    train_count = 0
+    test_count = 0
+
+    for class_name in classes:
+        os.makedirs(os.path.join(output_train_path, class_name), exist_ok=True)
+        os.makedirs(os.path.join(output_test_path, class_name), exist_ok=True)
+
+    for subject in train_subjects:
+        for class_name, img in subject_files[subject]:
             src = os.path.join(dataset_path, class_name, img)
-            dst = os.path.join(output_path, class_name, img)
+            dst = os.path.join(output_train_path, class_name, img)
             shutil.copy2(src, dst)
+            train_count += 1
+
+    for subject in test_subjects:
+        for class_name, img in subject_files[subject]:
+            src = os.path.join(dataset_path, class_name, img)
+            dst = os.path.join(output_test_path, class_name, img)
+            shutil.copy2(src, dst)
+            test_count += 1
 
     train_dataset = datasets.ImageFolder(root=output_train_path, transform=None)
     test_dataset = datasets.ImageFolder(root=output_test_path, transform=None)
 
-    print(f"\nResumo:")
-    print(f"  Dataset de treino: {len(train_dataset)} imagens")
-    print(f"  Dataset de teste: {len(test_dataset)} imagens")
+    print(f"Resumo Final:")
+    print(f"  Treino: {len(train_subjects)} sujeitos, {len(train_dataset)} fatias")
+    print(f"  Teste:  {len(test_subjects)} sujeitos, {len(test_dataset)} fatias")
     print(f"  Classes: {train_dataset.classes}")
 
+    overlap = set(train_subjects) & set(test_subjects)
+    if overlap:
+        print(f"\n  ERRO CRÍTICO: {len(overlap)} sujeitos em ambos os splits: {overlap}")
+    else:
+        print(f"\n  Verificação de integridade: zero vazamento entre splits")
+
     print("\n" + "-" * 60)
-    print("DIVISÃO DO DATASET CONCLUÍDA")
+    print("DIVISÃO DO DATASET POR SUJEITO CONCLUÍDA")
     print("-" * 60)
 
     return train_dataset, test_dataset

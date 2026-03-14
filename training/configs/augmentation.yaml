@@ -250,25 +250,11 @@ synthetic_cnn:
     scale: [0.05, 0.1]
     probability: 0.2
 
-  color_jitter:
-    enabled: true
-    brightness: 0.15
-    contrast: 0.2
-    saturation: 0.0
-    hue: 0.0
-    probability: 0.5
-
   gauss_noise:
     enabled: true
     std_range: [0.05, 0.15]
     mean_range: [0.0, 0.0]
     probability: 0.4
-
-  iso_noise:
-    enabled: true
-    color_shift: [0.01, 0.05]
-    intensity: [0.1, 0.3]
-    probability: 0.3
 
 # Augmentações sintéticas para classes minoritárias - Transformer
 synthetic_transformer:
@@ -304,25 +290,11 @@ synthetic_transformer:
     scale: 0.15
     probability: 0.4
 
-  color_jitter:
-    enabled: true
-    brightness: 0.1
-    contrast: 0.15
-    saturation: 0.0
-    hue: 0.0
-    probability: 0.4
-
   gauss_noise:
     enabled: true
     std_range: [0.05, 0.15]
     mean_range: [0.0, 0.0]
     probability: 0.4
-
-  iso_noise:
-    enabled: true
-    color_shift: [0.01, 0.05]
-    intensity: [0.1, 0.25]
-    probability: 0.3
 
 # Configurações para validação e teste
 validation:

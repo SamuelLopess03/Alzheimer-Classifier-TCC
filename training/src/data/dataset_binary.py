@@ -47,13 +47,10 @@ def prepare_dataset_binary(
     binary_dataset_path = os.path.join(output_base_path, "splits/binary/temp")
     os.makedirs(binary_dataset_path, exist_ok=True)
 
-    original_folders = sorted([f for f in os.listdir(raw_dataset_path) 
-                                if os.path.isdir(os.path.join(raw_dataset_path, f))])
-    
     class_mapping = model_config['class_mapping']
     
-    non_demented_folders = [original_folders[int(k)] for k, v in class_mapping.items() if v == 1]
-    demented_folders = [original_folders[int(k)] for k, v in class_mapping.items() if v == 0]
+    non_demented_folders = [k for k, v in class_mapping.items() if v == 1]
+    demented_folders = [k for k, v in class_mapping.items() if v == 0]
 
     binary_dataset_path, binary_classes_aux = binarize_alzheimer_dataset(
         dataset_path=raw_dataset_path,

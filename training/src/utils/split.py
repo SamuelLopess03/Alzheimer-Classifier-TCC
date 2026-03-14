@@ -1,8 +1,11 @@
+import os
 import numpy as np
 from torch.utils.data import Subset
 from sklearn.model_selection import StratifiedShuffleSplit
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Tuple
+
+from .dataset import extract_subject_id
 
 def create_stratified_holdout_split(
         dataset,
@@ -11,7 +14,7 @@ def create_stratified_holdout_split(
         random_state: int = 42
 ) -> Tuple[Subset, Subset]:
     print(f"{'-' * 60}")
-    print(f"CRIANDO HOLDOUT SPLIT ESTRATIFICADO")
+    print(f"CRIANDO HOLDOUT SPLIT POR SUJEITO (ESTRATIFICADO)")
     print(f"{'-' * 60}\n")
 
     print(f"Configuração:")
@@ -26,11 +29,20 @@ def create_stratified_holdout_split(
             f"mas somam {total_ratio:.4f}"
         )
 
-    print("Extraindo labels do dataset...\n")
-    labels = [dataset[i][1] for i in range(len(dataset))]
-    indices = list(range(len(dataset)))
+    print("Extraindo Subject IDs e agrupando por sujeito...\n")
 
-    print(f"Dataset total: {len(dataset)} amostras\n")
+    subjects = defaultdict(lambda: {"indices": [], "label": None})
+
+    for idx, (path, label) in enumerate(dataset.samples):
+        filename = os.path.basename(path)
+        subject_id = extract_subject_id(filename)
+        subjects[subject_id]["indices"].append(idx)
+        subjects[subject_id]["label"] = label
+
+    subject_ids = list(subjects.keys())
+    subject_labels = [subjects[s]["label"] for s in subject_ids]
+
+    print(f"Dataset total: {len(dataset)} fatias de {len(subject_ids)} sujeitos\n")
 
     splitter = StratifiedShuffleSplit(
         n_splits=1,
@@ -38,13 +50,31 @@ def create_stratified_holdout_split(
         random_state=random_state
     )
 
-    train_indices, val_indices = next(splitter.split(indices, labels))
+    train_subj_idx, val_subj_idx = next(
+        splitter.split(subject_ids, subject_labels)
+    )
+
+    train_indices = []
+    val_indices = []
+
+    train_subject_ids = []
+    val_subject_ids = []
+
+    for i in train_subj_idx:
+        sid = subject_ids[i]
+        train_indices.extend(subjects[sid]["indices"])
+        train_subject_ids.append(sid)
+
+    for i in val_subj_idx:
+        sid = subject_ids[i]
+        val_indices.extend(subjects[sid]["indices"])
+        val_subject_ids.append(sid)
 
     train_dataset = Subset(dataset, train_indices)
     val_dataset = Subset(dataset, val_indices)
 
-    train_labels = [labels[i] for i in train_indices]
-    val_labels = [labels[i] for i in val_indices]
+    train_labels = [dataset.samples[i][1] for i in train_indices]
+    val_labels = [dataset.samples[i][1] for i in val_indices]
 
     train_counts = Counter(train_labels)
     val_counts = Counter(val_labels)
@@ -52,19 +82,29 @@ def create_stratified_holdout_split(
     print("Distribuição por Classe:")
     print("\n  TREINO:")
     total_train = sum(train_counts.values())
+    train_subj_per_class = Counter([subjects[s]["label"] for s in train_subject_ids])
     for cls in sorted(train_counts.keys()):
         count = train_counts[cls]
         pct = count / total_train * 100
-        print(f"    Classe {cls}: {count:>5} amostras ({pct:>5.1f}%)")
-    print(f"    Total:     {total_train:>5} amostras")
+        n_subj = train_subj_per_class.get(cls, 0)
+        print(f"    Classe {cls}: {count:>5} fatias, {n_subj:>3} sujeitos ({pct:>5.1f}%)")
+    print(f"    Total:     {total_train:>5} fatias, {len(train_subject_ids):>3} sujeitos")
 
     print("\n  VALIDAÇÃO:")
     total_val = sum(val_counts.values())
+    val_subj_per_class = Counter([subjects[s]["label"] for s in val_subject_ids])
     for cls in sorted(val_counts.keys()):
         count = val_counts[cls]
         pct = count / total_val * 100
-        print(f"    Classe {cls}: {count:>5} amostras ({pct:>5.1f}%)")
-    print(f"    Total:     {total_val:>5} amostras")
+        n_subj = val_subj_per_class.get(cls, 0)
+        print(f"    Classe {cls}: {count:>5} fatias, {n_subj:>3} sujeitos ({pct:>5.1f}%)")
+    print(f"    Total:     {total_val:>5} fatias, {len(val_subject_ids):>3} sujeitos")
+
+    overlap = set(train_subject_ids) & set(val_subject_ids)
+    if overlap:
+        print(f"\n  ERRO CRÍTICO: {len(overlap)} sujeitos em ambos os splits!")
+    else:
+        print(f"\n  Zero vazamento entre treino e validação")
 
     print(f"\n{'-' * 60}\n")
 
@@ -130,16 +170,36 @@ def get_split_statistics(
     train_labels = all_labels[train_subset.indices]
     val_labels = all_labels[val_subset.indices]
 
+    train_subjects = set()
+    val_subjects = set()
+
+    if hasattr(base_dataset, 'samples'):
+        for idx in train_subset.indices:
+            path = base_dataset.samples[idx][0]
+            train_subjects.add(extract_subject_id(os.path.basename(path)))
+        for idx in val_subset.indices:
+            path = base_dataset.samples[idx][0]
+            val_subjects.add(extract_subject_id(os.path.basename(path)))
+
     stats = {
         'train_size': len(train_labels),
         'val_size': len(val_labels),
+        'train_subjects': len(train_subjects),
+        'val_subjects': len(val_subjects),
+        'subject_overlap': len(train_subjects & val_subjects),
         'train_distribution': dict(Counter(train_labels)),
         'val_distribution': dict(Counter(val_labels)),
     }
 
     if test_subset is not None:
         test_labels = all_labels[test_subset.indices]
+        test_subjects = set()
+        if hasattr(base_dataset, 'samples'):
+            for idx in test_subset.indices:
+                path = base_dataset.samples[idx][0]
+                test_subjects.add(extract_subject_id(os.path.basename(path)))
         stats['test_size'] = len(test_labels)
+        stats['test_subjects'] = len(test_subjects)
         stats['test_distribution'] = dict(Counter(test_labels))
 
     return stats
