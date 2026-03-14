@@ -67,27 +67,32 @@ model_config:
 
 # Grid de hiperparâmetros por tipo de arquitetura
 hyperparameter_grids:
+  # CNNs: backbone congelado, só treinamos o classificador (FC head)
+  # LR pode ser mais alto porque os gradientes só atualizam a camada final
   cnn:
-    learning_rate: [1e-2, 5e-3, 1e-3, 5e-4, 1e-4, 5e-5]
-    dropout: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
-    hidden_units: [128, 256, 512, 1024, 2048]
-    optimizer: ["adam", "sgd", "adamw"]
-    batch_size: [16, 32, 64, 128]
+    learning_rate: [5e-4, 1e-4, 5e-5]
+    dropout: [0.2, 0.3, 0.4, 0.5]
+    hidden_units: [256, 512, 1024]
+    optimizer: ["adam", "adamw"]
+    batch_size: [32, 64]
     loss_function: ["crossentropy"]
 
+  # ViT: Transformers são muito sensíveis ao LR
+  # LR alto desestabiliza o mecanismo de atenção multi-head
   vit:
-    learning_rate: [1e-3, 5e-4, 1e-4, 5e-5, 1e-5]
+    learning_rate: [5e-5, 1e-5]
     dropout: [0.1, 0.2, 0.3]
     hidden_units: [256, 512, 1024]
-    optimizer: ["adamw", "adam"]
-    batch_size: [16, 32, 64]
+    optimizer: ["adamw"]
+    batch_size: [32, 64]
     loss_function: ["crossentropy"]
 
+  # Swin: similar ao ViT mas um pouco mais estável por usar janelas locais
   swin:
-    learning_rate: [5e-4, 1e-4, 5e-5, 1e-5]
+    learning_rate: [5e-5, 1e-5]
     dropout: [0.1, 0.2, 0.3]
     hidden_units: [256, 512, 1024]
-    optimizer: ["adamw", "adam"]
+    optimizer: ["adamw"]
     batch_size: [32, 64]
     loss_function: ["crossentropy"]
 
@@ -96,7 +101,7 @@ loss_config:
   crossentropy:
     use_class_weights: true
     label_smoothing:
-      cnn: 0.0
+      cnn: 0.1
       transformer: 0.1
 
 # Configurações de Optimizer

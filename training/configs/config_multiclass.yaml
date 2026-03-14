@@ -2,17 +2,22 @@
 
 model:
   name: "multiclass_classifier"
-  num_classes: 3
+  num_classes: 2
   class_names:
-    - "Mild Dementia"
-    - "Moderate Dementia"
+    - "Mild+Moderate Dementia"
     - "Very mild Dementia"
 
-  # Mapeamento de classes do dataset original
+  # Mapeamento de classes do dataset original para as classes unificadas
   class_mapping:
-    1: 0  # Mild Dementia -> classe 0
-    2: 1  # Moderate Dementia -> classe 1
-    3: 2  # Very mild Dementia -> classe 2
+    "Mild Dementia": 0       # Mild Dementia -> classe 0 (Mild+Moderate)
+    "Moderate Dementia": 0   # Moderate Dementia -> classe 0 (Mild+Moderate)
+    "Very mild Dementia": 1  # Very mild Dementia -> classe 1
+
+  # Configuração de merge de classes
+  merge_classes:
+    "Mild+Moderate Dementia":
+      - "Mild Dementia"
+      - "Moderate Dementia"
 
   # Filtrar apenas imagens com demência
   filter_non_demented: true
@@ -28,24 +33,22 @@ data:
   random_seed: 42
 
   # Classes minoritárias para augmentação
-  minority_classes: [0, 1]  # Mild e Moderate
+  minority_classes: [0]  # Mild+Moderate é minoritária
 
   # Estratégia de balanceamento
   minority_augmentation:
     enabled: true
-    strategy: "percentage"
+    strategy: "ratio"
     ratio:
-      default_ratio: 0.6
+      default_ratio: 0.7
     proportional:
       multiplier: 1.5
     custom:
       targets:
-        0: 6000  # Mild: número absoluto de amostras
-        1: 4000  # Moderate: número absoluto de amostras
+        0: 8000  # Mild+Moderate: número absoluto de amostras
     percentage:
       targets:
-        0: 0.33  # Very Mild: 30% do dataset final
-        1: 0.23  # Moderate: 18% do dataset final
+        0: 0.40  # Mild+Moderate: 40% do dataset final
 
 training:
   epochs: 150

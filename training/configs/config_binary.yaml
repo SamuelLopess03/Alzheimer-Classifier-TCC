@@ -9,10 +9,10 @@ model:
 
   # Mapeamento de classes do dataset original
   class_mapping:
-    0: 1  # Non Demented -> Non Demented
-    1: 0  # Very mild Dementia -> Demented
-    2: 0  # Mild Dementia -> Demented
-    3: 0  # Moderate Dementia -> Demented
+    "Non Demented": 1        # Non Demented -> classe 1
+    "Very mild Dementia": 0  # Very mild Dementia -> classe 0
+    "Mild Dementia": 0       # Mild Dementia -> classe 0
+    "Moderate Dementia": 0   # Moderate Dementia -> classe 0
 
 data:
   dataset_type: "binary"

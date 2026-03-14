@@ -236,7 +236,7 @@ def create_model_with_architecture(
             arch_type = 'transformer' if is_transformer else 'cnn'
             label_smoothing = loss_cfg['label_smoothing'][arch_type]
 
-        if is_transformer and label_smoothing > 0:
+        if label_smoothing is not None and label_smoothing > 0:
             criterion = nn.CrossEntropyLoss(
                 weight=class_weights,
                 label_smoothing=label_smoothing
