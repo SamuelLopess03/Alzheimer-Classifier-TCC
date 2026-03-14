@@ -322,13 +322,6 @@ def search_best_hyperparameters_holdout(
 
     save_path = os.path.join(os.path.dirname(__file__), str(hyperparams_config['results']['save_path']))
 
-    if max_combinations is None:
-        arch_type = hyperparams_config['model_config'][architecture_name.lower()]['type']
-        if arch_type == 'transformer':
-            max_combinations = 200
-        else:
-            max_combinations = 300
-
     model_type_display = "BINÁRIO" if model_type == 'binary' else "MULTICLASSE"
 
     print(f"\n{'-' * 60}")
@@ -592,14 +585,25 @@ def run_grid_search(
 
             param_grid = get_architecture_specific_param_grid(arch)
 
+            # Definir número de combinações baseado no tipo de arquitetura
+            # CNNs: espaço de busca maior (144 combos) -> precisam de mais amostras
+            # Transformers: espaço menor (36 combos) -> menos amostras cobrem bem
+            transformer_archs = hyperparams_config['supported_architectures'].get('transformer', [])
+            if arch in transformer_archs:
+                max_combos = 25   # ~56% do espaço de 36 combinações
+            else:
+                max_combos = 55   # ~28% do espaço de 144 combinações
+
+            print(f"Estratégia: Random Search com {max_combos} combinações e 3 repetições\n")
+
             results = search_best_hyperparameters_holdout(
                 param_grid=param_grid,
                 architecture_name=arch,
                 device=device,
                 train_dataset=train_dataset,
                 model_type=model_type,
-                n_repetitions=2,
-                max_combinations=None
+                n_repetitions=3,            # 3 repetições para média estatística confiável
+                max_combinations=max_combos  # Combinações adaptadas ao tipo de arquitetura
             )
 
             all_results[arch] = results

@@ -93,7 +93,7 @@ def prepare_data():
     print(f"   Dataset Kaggle: {args.kaggle_dataset}")
     print(f"   Output Path: {args.output_path}\n")
 
-    if args.verify:
+    if getattr(args, 'verify', False):
         all_valid = verify_datasets(args.output_path)
         
         if args.validate:
@@ -115,18 +115,24 @@ def prepare_data():
         return
 
     os.makedirs(args.output_path, exist_ok=True)
-    os.makedirs(os.path.join(args.output_path, 'raw'), exist_ok=True)
-    os.makedirs(splits_paste, exist_ok=True)
+    raw_dir = os.path.join(args.output_path, 'raw')
+    os.makedirs(raw_dir, exist_ok=True)
+    
+    existing_classes = [d for d in os.listdir(raw_dir) if os.path.isdir(os.path.join(raw_dir, d))]
+    
+    if existing_classes:
+        print("Imagens brutas já encontradas, pulando download do Kaggle.\n")
+        classes = sorted(existing_classes)
+    else:
+        success, classes = download_kaggle_dataset(
+            dataset_name=args.kaggle_dataset,
+            output_dir=raw_dir,
+            kaggle_json_path=args.kaggle_json
+        )
 
-    success, classes = download_kaggle_dataset(
-        dataset_name=args.kaggle_dataset,
-        output_dir=os.path.join(args.output_path, 'raw'),
-        kaggle_json_path=args.kaggle_json
-    )
-
-    if not success or not classes:
-        print("\nErro: Dataset não foi baixado corretamente.\n")
-        sys.exit(1)
+        if not success or not classes:
+            print("\nErro: Dataset não foi baixado corretamente.\n")
+            sys.exit(1)
 
     results = {}
 
