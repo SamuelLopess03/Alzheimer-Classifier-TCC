@@ -204,15 +204,15 @@ def run_pipeline(args):
 
     pipeline_steps = []
 
-    if args.prepare_data:
+    if getattr(args, 'prepare_data', False):
         pipeline_steps.append('prepare_data')
         print("Preparação de dados será executada\n")
 
-    if args.train:
+    if getattr(args, 'train', False):
         pipeline_steps.append('train')
         print("Treinamento do modelo multiclasse será executado\n")
 
-    if args.inference:
+    if getattr(args, 'inference', False):
         pipeline_steps.append('inference')
         print("Inferência será executada\n")
 

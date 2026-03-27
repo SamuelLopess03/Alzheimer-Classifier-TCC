@@ -82,6 +82,40 @@ def verify_datasets(output_path: str):
 
     return all_valid
 
+def generate_metadata(output_path, kaggle_dataset):
+    metadata = {
+        'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
+        'kaggle_dataset': kaggle_dataset,
+        'splits': {}
+    }
+
+    def get_split_stats(split_path):
+        stats = {}
+        for phase in ['train', 'test']:
+            phase_path = os.path.join(split_path, phase)
+            if os.path.exists(phase_path):
+                stats[phase] = {
+                    cls: len([f for f in os.listdir(os.path.join(phase_path, cls)) 
+                             if f.lower().endswith(('.jpg', '.jpeg'))])
+                    for cls in os.listdir(phase_path) 
+                    if os.path.isdir(os.path.join(phase_path, cls))
+                }
+        return stats
+
+    for split_name in ['binary', 'multiclass']:
+        split_path = os.path.join(output_path, f'splits/{split_name}')
+        if os.path.exists(split_path):
+            metadata['splits'][split_name] = get_split_stats(split_path)
+
+    metadata_file = os.path.join(output_path, 'split_metadata.json')
+    with open(metadata_file, 'w') as f:
+        json.dump(metadata, f, indent=4)
+        
+    print(f"\n============================================================")
+    print(f"METADADOS GERADOS COM SUCESSO")
+    print(f"============================================================")
+    print(f"Arquivo: {metadata_file}\n")
+
 def prepare_data():
     args = parse_args()
 
@@ -89,18 +123,25 @@ def prepare_data():
     print("COMEÇANDO ETAPA DE PREPARAÇÃO DOS DATASETS")
     print("=" * 60 + "\n")
 
+    kaggle_dataset = getattr(args, 'kaggle_dataset', 'ninadaithal/imagesoasis')
+    output_path = getattr(args, 'output_path', os.path.join(os.path.dirname(__file__), '..', 'shared/data'))
+    kaggle_json = getattr(args, 'kaggle_json', os.path.join(os.path.dirname(__file__), '..', 'kaggle.json'))
+    skip_binary = getattr(args, 'skip_binary', False)
+    skip_multiclass = getattr(args, 'skip_multiclass', False)
+    validate = getattr(args, 'validate', False)
+
     print("Configuração:")
-    print(f"   Dataset Kaggle: {args.kaggle_dataset}")
-    print(f"   Output Path: {args.output_path}\n")
+    print(f"   Dataset Kaggle: {kaggle_dataset}")
+    print(f"   Output Path: {output_path}\n")
 
     if getattr(args, 'verify', False):
-        all_valid = verify_datasets(args.output_path)
+        all_valid = verify_datasets(output_path)
         
-        if args.validate:
+        if validate:
             print(f"\n{'-' * 60}")
             print("VALIDANDO INTEGRIDADE DOS ARQUIVOS (OPCIONAL)")
             print(f"{'-' * 60}")
-            v, c, err = validate_image_files(args.output_path)
+            v, c, err = validate_image_files(output_path)
             print(f"Resultado: {v} imagens válidas, {c} corrompidas.")
             if err:
                 print("\nArquivos corrompidos detectados:")
@@ -109,13 +150,13 @@ def prepare_data():
 
         return
 
-    splits_paste = os.path.join(args.output_path, 'splits')
+    splits_paste = os.path.join(output_path, 'splits')
     if os.path.exists(os.path.join(splits_paste, 'multiclass')):
         print(f"Dados do Dataset já Foram Baixados e Preparados.\n")
         return
 
-    os.makedirs(args.output_path, exist_ok=True)
-    raw_dir = os.path.join(args.output_path, 'raw')
+    os.makedirs(output_path, exist_ok=True)
+    raw_dir = os.path.join(output_path, 'raw')
     os.makedirs(raw_dir, exist_ok=True)
     
     existing_classes = [d for d in os.listdir(raw_dir) if os.path.isdir(os.path.join(raw_dir, d))]
@@ -125,9 +166,9 @@ def prepare_data():
         classes = sorted(existing_classes)
     else:
         success, classes = download_kaggle_dataset(
-            dataset_name=args.kaggle_dataset,
+            dataset_name=kaggle_dataset,
             output_dir=raw_dir,
-            kaggle_json_path=args.kaggle_json
+            kaggle_json_path=kaggle_json
         )
 
         if not success or not classes:
@@ -136,13 +177,13 @@ def prepare_data():
 
     results = {}
 
-    if not args.skip_binary:
+    if not skip_binary:
         print("\n" + "-" * 60)
         print("ETAPA 1: PREPARAÇÃO DO DATASET BINÁRIO")
         print("-" * 60 + "\n")
 
         try:
-            binary_train, binary_test, binary_classes = prepare_dataset_binary(output_base_path=args.output_path)
+            binary_train, binary_test, binary_classes = prepare_dataset_binary(output_base_path=output_path)
 
             results['binary'] = (binary_train, binary_test, binary_classes)
 
@@ -150,13 +191,13 @@ def prepare_data():
             print(f"\nErro ao preparar dataset binário: {e}")
             sys.exit(1)
 
-    if not args.skip_multiclass:
+    if not skip_multiclass:
         print("\n" + "-" * 60)
         print("ETAPA 2: PREPARAÇÃO DO DATASET MULTICLASSE")
         print("-" * 60 + "\n")
 
         try:
-            multi_train, multi_test, multi_classes = prepare_dataset_multiclass(output_base_path=args.output_path)
+            multi_train, multi_test, multi_classes = prepare_dataset_multiclass(output_base_path=output_path)
 
             results['multiclass'] = (multi_train, multi_test, multi_classes)
 
@@ -165,8 +206,8 @@ def prepare_data():
             sys.exit(1)
 
     try:
-        shutil.rmtree(os.path.join(args.output_path, 'raw'))
-        print(f"\nPasta base removida: {os.path.join(args.output_path, 'raw')}")
+        shutil.rmtree(os.path.join(output_path, 'raw'))
+        print(f"\nPasta base removida: {os.path.join(output_path, 'raw')}")
     except Exception as e:
         print(f"\nErro ao remover pasta base: {e}")
 
@@ -174,36 +215,13 @@ def prepare_data():
     print("ETAPA 3: VERIFICAÇÃO FINAL")
     print("-" * 60 + "\n")
 
-    all_valid = verify_datasets(args.output_path)
+    all_valid = verify_datasets(output_path)
 
     print("\n" + "-" * 60)
     print("ETAPA 4: GERAÇÃO DE METADADOS")
     print("-" * 60 + "\n")
 
-    metadata = {
-        'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
-        'kaggle_dataset': args.kaggle_dataset,
-        'splits': {}
-    }
-
-    for split_name, split_path in [('binary', os.path.join(args.output_path, 'splits/binary')), 
-                                   ('multiclass', os.path.join(args.output_path, 'splits/multiclass'))]:
-        if os.path.exists(split_path):
-            metadata['splits'][split_name] = {}
-            for phase in ['train', 'test']:
-                phase_path = os.path.join(split_path, phase)
-                if os.path.exists(phase_path):
-                    metadata['splits'][split_name][phase] = {}
-                    for class_name in os.listdir(phase_path):
-                        class_path = os.path.join(phase_path, class_name)
-                        if os.path.isdir(class_path):
-                            count = len([f for f in os.listdir(class_path) if f.lower().endswith(('.jpg', '.jpeg'))])
-                            metadata['splits'][split_name][phase][class_name] = count
-
-    metadata_file = os.path.join(args.output_path, 'split_metadata.json')
-    with open(metadata_file, 'w') as f:
-        json.dump(metadata, f, indent=4)
-    print(f"Metadados gerados em: {metadata_file}\n")
+    generate_metadata(output_path, kaggle_dataset)
 
     print(f"\n{'-' * 60}")
     if all_valid:
@@ -214,5 +232,5 @@ def prepare_data():
         sys.exit(1)
     print(f"{'-' * 60}\n")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     prepare_data()

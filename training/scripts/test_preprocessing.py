@@ -355,39 +355,45 @@ def main():
 
     args, _ = parser.parse_known_args()
 
+    test = getattr(args, 'test', 'all')
+    dataset_type = getattr(args, 'dataset_type', 'both')
+    architecture = getattr(args, 'architecture', 'resnext50_32x4d')
+    batch_size = getattr(args, 'batch_size', 16)
+    strategy = getattr(args, 'strategy', None)
+
     print("\n" + "=" * 80)
     print(" " * 20 + "TESTE DE PREPROCESSING E AUGMENTATION")
     print("=" * 80)
 
-    if args.test == 'preprocessor':
+    if test == 'preprocessor':
         test_preprocessor()
 
-    elif args.test == 'all':
+    elif test == 'all':
         test_preprocessor()
         test_both_datasets(
-            architecture=args.architecture,
-            batch_size=args.batch_size,
-            strategy=args.strategy
+            architecture=architecture,
+            batch_size=batch_size,
+            strategy=strategy
         )
 
-    elif args.test == 'augmentation':
-        if args.dataset_type == 'both':
-            test_augmentation_pipeline("binary", args.architecture, args.batch_size)
-            test_augmentation_pipeline("multiclass", args.architecture, args.batch_size)
+    elif test == 'augmentation':
+        if dataset_type == 'both':
+            test_augmentation_pipeline("binary", architecture, batch_size)
+            test_augmentation_pipeline("multiclass", architecture, batch_size)
         else:
-            test_augmentation_pipeline(args.dataset_type, args.architecture, args.batch_size)
+            test_augmentation_pipeline(dataset_type, architecture, batch_size)
 
-    elif args.test == 'minority':
-        if args.dataset_type == 'both':
-            test_minority_augmentation("binary", args.architecture, args.strategy)
-            test_minority_augmentation("multiclass", args.architecture, args.strategy)
+    elif test == 'minority':
+        if dataset_type == 'both':
+            test_minority_augmentation("binary", architecture, strategy)
+            test_minority_augmentation("multiclass", architecture, strategy)
         else:
-            test_minority_augmentation(args.dataset_type, args.architecture, args.strategy)
+            test_minority_augmentation(dataset_type, architecture, strategy)
 
-    elif args.test in ['binary', 'multiclass']:
-        dataset_type = args.test
-        test_augmentation_pipeline(dataset_type, args.architecture, args.batch_size)
-        test_minority_augmentation(dataset_type, args.architecture, args.strategy)
+    elif test in ['binary', 'multiclass']:
+        dt = test
+        test_augmentation_pipeline(dt, architecture, batch_size)
+        test_minority_augmentation(dt, architecture, strategy)
 
     print("\n" + "=" * 80)
     print(" " * 30 + "TESTES CONCLUÍDOS")

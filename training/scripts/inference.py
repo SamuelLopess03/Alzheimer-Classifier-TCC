@@ -231,8 +231,7 @@ def print_hyperparameters(hyperparameters: Dict):
         print(f"   {key:30s}: {value}")
     print("-" * 60 + "\n")
 
-def inference(args, model_type: str = 'binary',
-              generate_gradcam: bool = True, gradcam_samples: int = 10):
+def inference(args: argparse.Namespace):
     print(f"\n{'=' * 80}")
     print("PIPELINE: TREINAMENTO FINAL + AVALIAÇÃO")
     print(f"{'=' * 80}\n")
@@ -241,11 +240,17 @@ def inference(args, model_type: str = 'binary',
 
     device = setup_device(hyperparams_config)
 
-    is_multiclass = args.model_type == 'multiclass' if args.model_type else model_type == 'multiclass'
+    model_type = getattr(args, 'model_type', 'binary')
+    experiments_path = getattr(args, 'experiments_path', DEFAULT_EXPERIMENTS_PATH)
+    data_path = getattr(args, 'data_path', DEFAULT_DATA_PATH)
+    generate_gradcam = getattr(args, 'generate_gradcam', False)
+    gradcam_samples = getattr(args, 'gradcam_samples', 10)
+
+    is_multiclass = (model_type == 'multiclass')
 
     best_experiment = find_best_experiment(
-        args.experiments_path if args.experiments_path else DEFAULT_EXPERIMENTS_PATH,
-        args.model_type if args.model_type else model_type
+        experiments_path,
+        model_type
     )
 
     if best_experiment is None:
@@ -257,8 +262,8 @@ def inference(args, model_type: str = 'binary',
 
     try:
         train_dataset, test_dataset = load_datasets(
-            args.data_path if args.data_path else DEFAULT_DATA_PATH,
-            args.model_type if args.model_type else model_type
+            data_path,
+            model_type
         )
     except FileNotFoundError as excep:
         print(str(excep))
@@ -297,8 +302,8 @@ def inference(args, model_type: str = 'binary',
         training_results=training_results,
         hyperparameters=hyperparameters,
         device=device,
-        generate_gradcam=args.generate_gradcam if args.generate_gradcam else generate_gradcam,
-        gradcam_samples=args.gradcam_samples if args.gradcam_samples else gradcam_samples
+        generate_gradcam=generate_gradcam,
+        gradcam_samples=gradcam_samples
     )
 
     results_file = save_final_results(
