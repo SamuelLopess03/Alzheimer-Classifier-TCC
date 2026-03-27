@@ -1,9 +1,6 @@
-from .dataset_binary import (
+from .dataset_loaders import (
     prepare_dataset_binary,
-    binarize_alzheimer_dataset
-)
-
-from .dataset_multiclass import (
+    binarize_alzheimer_dataset,
     prepare_dataset_multiclass
 )
 
@@ -27,16 +24,8 @@ from .datasets import (
     augment_minority_class
 )
 
-from .utils import (
-    count_unique_subjects,
-    get_subject_ids_from_dataset,
-    resolve_dataset_chain,
-    resolve_subset_labels,
-    extract_subject_id
-)
-
 __all__ = [
-    # Dataset functions
+    # Dataset Loaders (binary & multiclass)
     'prepare_dataset_binary',
     'binarize_alzheimer_dataset',
     'prepare_dataset_multiclass',
@@ -57,11 +46,4 @@ __all__ = [
     'StaticPreprocessedDataset',
     'SyntheticAugmentedDataset',
     'augment_minority_class',
-
-    # Data Utils
-    'count_unique_subjects',
-    'get_subject_ids_from_dataset',
-    'resolve_dataset_chain',
-    'resolve_subset_labels',
-    'extract_subject_id'
 ]

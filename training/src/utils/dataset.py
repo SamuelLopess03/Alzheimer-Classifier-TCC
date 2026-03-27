@@ -259,3 +259,13 @@ def validate_image_files(directory: str) -> Tuple[int, int, List[str]]:
                     errors.append(f"{filepath}: {str(e)}")
 
     return valid_count, corrupt_count, errors
+
+def resolve_subset_labels(split) -> np.ndarray:
+    if hasattr(split.dataset, 'targets'):
+        all_labels = np.array(split.dataset.targets)
+    elif hasattr(split.dataset, 'labels'):
+        all_labels = np.array(split.dataset.labels)
+    else:
+        all_labels = np.array([split.dataset[i][1] for i in range(len(split.dataset))])
+        
+    return all_labels[split.indices]

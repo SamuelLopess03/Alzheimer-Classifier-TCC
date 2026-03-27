@@ -65,3 +65,25 @@ def get_subject_ids_from_dataset(ds: Any) -> List[str]:
         subject_ids = ["unknown"] * len(ds)
         
     return subject_ids
+
+def count_unique_subjects(dataset: Any, indices=None) -> int:
+    base_ds, resolved_indices = resolve_dataset_chain(dataset, indices)
+
+    if hasattr(base_ds, 'subject_indices') and isinstance(base_ds.subject_indices, dict):
+        return len(base_ds.subject_indices)
+
+    subjects = set()
+    if hasattr(base_ds, 'samples'):
+        targets = (
+            (base_ds.samples[i][0] for i in resolved_indices)
+            if resolved_indices is not None
+            else (p for p, _ in base_ds.samples)
+        )
+        
+        for path in targets:
+            try:
+                subjects.add(extract_subject_id(os.path.basename(path)))
+            except Exception:
+                continue
+
+    return len(subjects) if subjects else 0

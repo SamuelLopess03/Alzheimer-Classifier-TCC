@@ -1,14 +1,16 @@
 from .dataset import (
     download_kaggle_dataset,
     split_dataset_train_test,
-    validate_image_files
+    validate_image_files,
+    resolve_subset_labels
 )
 
 from .subject_utils import (
     extract_subject_id,
     extract_slice_index,
     get_subject_ids_from_dataset,
-    resolve_dataset_chain
+    resolve_dataset_chain,
+    count_unique_subjects
 )
 
 from .split import (
@@ -26,14 +28,22 @@ from .config_loader import (
     load_hyperparameters_config
 )
 
+from .hardware_env import (
+    apply_hardware_optimizations,
+    detect_environment
+)
+
 __all__ = [
     # Dataset functions
     "download_kaggle_dataset",
     "split_dataset_train_test",
+    "validate_image_files",
+    "resolve_subset_labels",
     "extract_subject_id",
     "validate_image_files",
     "get_subject_ids_from_dataset",
     "extract_slice_index",
+    "count_unique_subjects",
 
     # Split functions
     "create_stratified_holdout_split",
@@ -46,5 +56,9 @@ __all__ = [
     "load_binary_config",
     "load_config",
     "load_yaml",
-    "load_hyperparameters_config"
+    "load_hyperparameters_config",
+
+    # Hardware
+    "apply_hardware_optimizations",
+    "detect_environment"
 ]

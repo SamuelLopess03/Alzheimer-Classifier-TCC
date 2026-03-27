@@ -12,46 +12,33 @@ def get_alzheimer_grayscale_augmentation(
     preprocessor = MedicalImagePreprocessor(architecture_name)
     config = preprocessor.config
     aug_config = load_augmentation_config()
-
     is_transformer = architecture_name.lower() in ['vit_b_16', 'swin_v2_tiny']
 
-    if is_training:
-        thresholds = aug_config['dataset_size_thresholds']
-
-        if dataset_size < thresholds['small']:
-            print(f"\nAugmentação Pesada: Dataset pequeno (<{thresholds['small']}) - {'Transformer' if is_transformer else 'CNN'}\n")
-            if is_transformer:
-                cfg = aug_config['train_heavy_transformer']
-                augmentations = _get_transformer_heavy_pipeline(config, cfg)
-            else:
-                cfg = aug_config['train_heavy_cnn']
-                augmentations = _get_cnn_heavy_pipeline(config, cfg)
-
-        elif dataset_size < thresholds['medium']:
-            print(f"\nAugmentação Moderada: Dataset médio (<{thresholds['medium']}) - {'Transformer' if is_transformer else 'CNN'}\n")
-            if is_transformer:
-                cfg = aug_config['train_moderate_transformer']
-                augmentations = _get_transformer_moderate_pipeline(config, cfg)
-            else:
-                cfg = aug_config['train_moderate_cnn']
-                augmentations = _get_cnn_moderate_pipeline(config, cfg)
-
-        else:
-            print(f"\nAugmentação Leve: Dataset grande (≥{thresholds['large']}) - {'Transformer' if is_transformer else 'CNN'}\n")
-            if is_transformer:
-                cfg = aug_config['train_light_transformer']
-                augmentations = _get_transformer_light_pipeline(config, cfg)
-            else:
-                cfg = aug_config['train_light_cnn']
-                augmentations = _get_cnn_light_pipeline(config, cfg)
-    else:
-        augmentations = [
+    if not is_training:
+        return alb.Compose([
             alb.Resize(config["image_size"], config["image_size"]),
             alb.Normalize(mean=config["mean"], std=config["std"]),
             ToTensorV2()
-        ]
+        ])
 
-    return alb.Compose(augmentations)
+    thresholds = aug_config['dataset_size_thresholds']
+    family = "transformer" if is_transformer else "cnn"
+
+    if dataset_size < thresholds['small']:
+        level = "heavy"
+    elif dataset_size < thresholds['medium']:
+        level = "moderate"
+    else:
+        level = "light"
+
+    cfg_key = f"train_{level}_{family}"
+    cfg = aug_config[cfg_key]
+
+    label = "Transformer" if is_transformer else "CNN"
+    print(f"\nAugmentação {level.capitalize()} ({label}, N={dataset_size})\n")
+
+    pipeline_fn = _PIPELINE_REGISTRY[(family, level)]
+    return alb.Compose(pipeline_fn(config, cfg))
 
 def create_synthetic_augmentation_for_minority(architecture_name: str) -> alb.Compose:
     preprocessor = MedicalImagePreprocessor(architecture_name)
@@ -59,241 +46,193 @@ def create_synthetic_augmentation_for_minority(architecture_name: str) -> alb.Co
     aug_config = load_augmentation_config()
     is_transformer = architecture_name.lower() in ['vit_b_16', 'swin_v2_tiny']
 
-    if is_transformer:
-        cfg = aug_config['synthetic_transformer']
-        augmentations = _get_transformer_synthetic_pipeline(config, cfg)
-    else:
-        cfg = aug_config['synthetic_cnn']
-        augmentations = _get_cnn_synthetic_pipeline(config, cfg)
+    family = "transformer" if is_transformer else "cnn"
+    cfg = aug_config[f'synthetic_{family}']
+    pipeline_fn = _PIPELINE_REGISTRY[(family, "synthetic")]
+    return alb.Compose(pipeline_fn(config, cfg))
 
-    return alb.Compose(augmentations)
-
-def _get_transformer_heavy_pipeline(config, cfg):
+def _resize_normalize(config: dict) -> list:
     return [
         alb.Resize(config["image_size"], config["image_size"]),
+        alb.Normalize(mean=config["mean"], std=config["std"]),
+        ToTensorV2()
+    ]
+
+def _flip_rotate(cfg: dict) -> list:
+    return [
         alb.HorizontalFlip(p=cfg['horizontal_flip']['probability']),
         alb.Rotate(limit=cfg['rotation']['limit'], p=cfg['rotation']['probability']),
-        alb.Affine(
-            scale=(float(cfg['affine']['scale'][0]), float(cfg['affine']['scale'][1])),
-            translate_percent=(float(cfg['affine']['translate_percent'][0]), float(cfg['affine']['translate_percent'][1])),
-            p=cfg['affine']['probability']
-        ),
-        alb.CLAHE(
-            clip_limit=cfg['clahe']['clip_limit'],
-            tile_grid_size=(int(cfg['clahe']['tile_grid_size'][0]), int(cfg['clahe']['tile_grid_size'][1])),
-            p=cfg['clahe']['probability']
-        ),
-        alb.RandomBrightnessContrast(
-            brightness_limit=cfg['brightness_contrast']['brightness_limit'],
-            contrast_limit=cfg['brightness_contrast']['contrast_limit'],
-            p=cfg['brightness_contrast']['probability']
-        ),
-        alb.RandomGamma(
-            gamma_limit=(float(cfg['random_gamma']['gamma_limit'][0]), float(cfg['random_gamma']['gamma_limit'][1])),
-            p=cfg['random_gamma']['probability']
-        ),
-        alb.GaussNoise(
-            std_range=(float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1])),
-            mean_range=(float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1])),
-            p=cfg['gauss_noise']['probability']
-        ),
-        alb.Normalize(mean=config["mean"], std=config["std"]),
-        ToTensorV2()
     ]
 
-def _get_cnn_heavy_pipeline(config, cfg):
+def _affine(cfg: dict) -> alb.Affine:
+    c = cfg['affine']
+    return alb.Affine(
+        scale=(float(c['scale'][0]), float(c['scale'][1])),
+        translate_percent=(float(c['translate_percent'][0]), float(c['translate_percent'][1])),
+        p=c['probability']
+    )
+
+def _clahe(cfg: dict) -> alb.CLAHE:
+    c = cfg['clahe']
+    return alb.CLAHE(
+        clip_limit=c['clip_limit'],
+        tile_grid_size=(int(c['tile_grid_size'][0]), int(c['tile_grid_size'][1])),
+        p=c['probability']
+    )
+
+def _brightness_contrast(cfg: dict) -> alb.RandomBrightnessContrast:
+    c = cfg['brightness_contrast']
+    return alb.RandomBrightnessContrast(
+        brightness_limit=c['brightness_limit'],
+        contrast_limit=c['contrast_limit'],
+        p=c['probability']
+    )
+
+def _gamma(cfg: dict) -> alb.RandomGamma:
+    c = cfg['random_gamma']
+    return alb.RandomGamma(
+        gamma_limit=(float(c['gamma_limit'][0]), float(c['gamma_limit'][1])),
+        p=c['probability']
+    )
+
+def _gauss_noise(cfg: dict) -> alb.GaussNoise:
+    c = cfg['gauss_noise']
+    return alb.GaussNoise(
+        std_range=(float(c['std_range'][0]), float(c['std_range'][1])),
+        mean_range=(float(c['mean_range'][0]), float(c['mean_range'][1])),
+        p=c['probability']
+    )
+
+def _blur_sharpen_oneof(cfg: dict) -> alb.OneOf:
+    bs = cfg['blur_sharpen']
+    return alb.OneOf([
+        alb.GaussianBlur(
+            blur_limit=(int(bs['gaussian_blur']['blur_limit'][0]), int(bs['gaussian_blur']['blur_limit'][1])),
+            p=1.0
+        ),
+        alb.Sharpen(
+            alpha=(float(bs['sharpen']['alpha'][0]), float(bs['sharpen']['alpha'][1])),
+            lightness=(float(bs['sharpen']['lightness'][0]), float(bs['sharpen']['lightness'][1])),
+            p=1.0
+        ),
+    ], p=bs['probability'])
+
+def _affine_synthetic(cfg: dict) -> alb.Affine:
+    c = cfg['affine']
+    return alb.Affine(
+        translate_percent={
+            "x": (float(c['translate_percent']['x'][0]), float(c['translate_percent']['x'][1])),
+            "y": (float(c['translate_percent']['y'][0]), float(c['translate_percent']['y'][1]))
+        },
+        scale=(float(c['scale'][0]), float(c['scale'][1])),
+        rotate=(float(c['rotate'][0]), float(c['rotate'][1])),
+        p=c['probability']
+    )
+
+def _cnn_heavy(config, cfg):
     return [
         alb.Resize(config["image_size"], config["image_size"]),
-        alb.HorizontalFlip(p=cfg['horizontal_flip']['probability']),
-        alb.Rotate(limit=cfg['rotation']['limit'], p=cfg['rotation']['probability']),
-        alb.Affine(
-            scale=(float(cfg['affine']['scale'][0]), float(cfg['affine']['scale'][1])),
-            translate_percent=(float(cfg['affine']['translate_percent'][0]), float(cfg['affine']['translate_percent'][1])),
-            p=cfg['affine']['probability']
-        ),
-        alb.CLAHE(
-            clip_limit=cfg['clahe']['clip_limit'],
-            tile_grid_size=(int(cfg['clahe']['tile_grid_size'][0]), int(cfg['clahe']['tile_grid_size'][1])),
-            p=cfg['clahe']['probability']
-        ),
-        alb.RandomBrightnessContrast(
-            brightness_limit=cfg['brightness_contrast']['brightness_limit'],
-            contrast_limit=cfg['brightness_contrast']['contrast_limit'],
-            p=cfg['brightness_contrast']['probability']
-        ),
-        alb.RandomGamma(
-            gamma_limit=(float(cfg['random_gamma']['gamma_limit'][0]), float(cfg['random_gamma']['gamma_limit'][1])),
-            p=cfg['random_gamma']['probability']
-        ),
-        alb.OneOf([
-            alb.GaussianBlur(blur_limit=(int(cfg['blur_sharpen']['gaussian_blur']['blur_limit'][0]), int(cfg['blur_sharpen']['gaussian_blur']['blur_limit'][1])), p=1.0),
-            alb.Sharpen(
-                alpha=(float(cfg['blur_sharpen']['sharpen']['alpha'][0]), float(cfg['blur_sharpen']['sharpen']['alpha'][1])),
-                lightness=(float(cfg['blur_sharpen']['sharpen']['lightness'][0]), float(cfg['blur_sharpen']['sharpen']['lightness'][1])),
-                p=1.0
-            ),
-        ], p=cfg['blur_sharpen']['probability']),
-        alb.GaussNoise(
-            std_range=(float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1])),
-            mean_range=(float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1])),
-            p=cfg['gauss_noise']['probability']
-        ),
-        alb.Normalize(mean=config["mean"], std=config["std"]),
-        ToTensorV2()
+        *_flip_rotate(cfg),
+        _affine(cfg),
+        _clahe(cfg),
+        _brightness_contrast(cfg),
+        _gamma(cfg),
+        _blur_sharpen_oneof(cfg),
+        _gauss_noise(cfg),
+        *_resize_normalize(config)[1:]   # Normalize + ToTensorV2 (Resize já feito)
     ]
 
-def _get_transformer_moderate_pipeline(config, cfg):
+def _cnn_moderate(config, cfg):
     return [
         alb.Resize(config["image_size"], config["image_size"]),
-        alb.HorizontalFlip(p=cfg['horizontal_flip']['probability']),
-        alb.Rotate(limit=cfg['rotation']['limit'], p=cfg['rotation']['probability']),
-        alb.Affine(
-            scale=(float(cfg['affine']['scale'][0]), float(cfg['affine']['scale'][1])),
-            translate_percent=(float(cfg['affine']['translate_percent'][0]), float(cfg['affine']['translate_percent'][1])),
-            p=cfg['affine']['probability']
+        *_flip_rotate(cfg),
+        _clahe(cfg),
+        _brightness_contrast(cfg),
+        _gamma(cfg),
+        alb.GaussianBlur(
+            blur_limit=(int(cfg['gaussian_blur']['blur_limit'][0]), int(cfg['gaussian_blur']['blur_limit'][1])),
+            p=cfg['gaussian_blur']['probability']
         ),
-        alb.CLAHE(
-            clip_limit=cfg['clahe']['clip_limit'],
-            tile_grid_size=(int(cfg['clahe']['tile_grid_size'][0]), int(cfg['clahe']['tile_grid_size'][1])),
-            p=cfg['clahe']['probability']
-        ),
-        alb.RandomBrightnessContrast(
-            brightness_limit=cfg['brightness_contrast']['brightness_limit'],
-            contrast_limit=cfg['brightness_contrast']['contrast_limit'],
-            p=cfg['brightness_contrast']['probability']
-        ),
-        alb.RandomGamma(
-            gamma_limit=(float(cfg['random_gamma']['gamma_limit'][0]), float(cfg['random_gamma']['gamma_limit'][1])),
-            p=cfg['random_gamma']['probability']
-        ),
-        alb.GaussNoise(
-            std_range=(float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1])),
-            mean_range=(float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1])),
-            p=cfg['gauss_noise']['probability']
-        ),
-        alb.Normalize(mean=config["mean"], std=config["std"]),
-        ToTensorV2()
+        _gauss_noise(cfg),
+        *_resize_normalize(config)[1:]
     ]
 
-def _get_cnn_moderate_pipeline(config, cfg):
+def _cnn_light(config, cfg):
     return [
         alb.Resize(config["image_size"], config["image_size"]),
-        alb.HorizontalFlip(p=cfg['horizontal_flip']['probability']),
-        alb.Rotate(limit=cfg['rotation']['limit'], p=cfg['rotation']['probability']),
-        alb.CLAHE(
-            clip_limit=cfg['clahe']['clip_limit'],
-            tile_grid_size=(int(cfg['clahe']['tile_grid_size'][0]), int(cfg['clahe']['tile_grid_size'][1])),
-            p=cfg['clahe']['probability']
-        ),
-        alb.RandomBrightnessContrast(
-            brightness_limit=cfg['brightness_contrast']['brightness_limit'],
-            contrast_limit=cfg['brightness_contrast']['contrast_limit'],
-            p=cfg['brightness_contrast']['probability']
-        ),
-        alb.RandomGamma(
-            gamma_limit=(float(cfg['random_gamma']['gamma_limit'][0]), float(cfg['random_gamma']['gamma_limit'][1])),
-            p=cfg['random_gamma']['probability']
-        ),
-        alb.GaussianBlur(blur_limit=(int(cfg['gaussian_blur']['blur_limit'][0]), int(cfg['gaussian_blur']['blur_limit'][1])), p=cfg['gaussian_blur']['probability']),
-        alb.GaussNoise(
-            std_range=(float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1])),
-            mean_range=(float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1])),
-            p=cfg['gauss_noise']['probability']
-        ),
-        alb.Normalize(mean=config["mean"], std=config["std"]),
-        ToTensorV2()
+        *_flip_rotate(cfg),
+        _clahe(cfg),
+        _brightness_contrast(cfg),
+        _gauss_noise(cfg),
+        *_resize_normalize(config)[1:]
     ]
 
-def _get_transformer_light_pipeline(config, cfg):
+def _transformer_heavy(config, cfg):
     return [
         alb.Resize(config["image_size"], config["image_size"]),
-        alb.HorizontalFlip(p=cfg['horizontal_flip']['probability']),
-        alb.Rotate(limit=cfg['rotation']['limit'], p=cfg['rotation']['probability']),
-        alb.CLAHE(
-            clip_limit=cfg['clahe']['clip_limit'],
-            tile_grid_size=(int(cfg['clahe']['tile_grid_size'][0]), int(cfg['clahe']['tile_grid_size'][1])),
-            p=cfg['clahe']['probability']
-        ),
-        alb.RandomBrightnessContrast(
-            brightness_limit=cfg['brightness_contrast']['brightness_limit'],
-            contrast_limit=cfg['brightness_contrast']['contrast_limit'],
-            p=cfg['brightness_contrast']['probability']
-        ),
-        alb.RandomGamma(
-            gamma_limit=(float(cfg['random_gamma']['gamma_limit'][0]), float(cfg['random_gamma']['gamma_limit'][1])),
-            p=cfg['random_gamma']['probability']
-        ),
-        alb.GaussNoise(
-            std_range=(float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1])),
-            mean_range=(float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1])),
-            p=cfg['gauss_noise']['probability']
-        ),
-        alb.Normalize(mean=config["mean"], std=config["std"]),
-        ToTensorV2()
+        *_flip_rotate(cfg),
+        _affine(cfg),
+        _clahe(cfg),
+        _brightness_contrast(cfg),
+        _gamma(cfg),
+        _gauss_noise(cfg),
+        *_resize_normalize(config)[1:]
     ]
 
-def _get_cnn_light_pipeline(config, cfg):
+def _transformer_moderate(config, cfg):
     return [
         alb.Resize(config["image_size"], config["image_size"]),
-        alb.HorizontalFlip(p=cfg['horizontal_flip']['probability']),
-        alb.Rotate(limit=cfg['rotation']['limit'], p=cfg['rotation']['probability']),
-        alb.CLAHE(
-            clip_limit=cfg['clahe']['clip_limit'],
-            tile_grid_size=(int(cfg['clahe']['tile_grid_size'][0]), int(cfg['clahe']['tile_grid_size'][1])),
-            p=cfg['clahe']['probability']
-        ),
-        alb.RandomBrightnessContrast(
-            brightness_limit=cfg['brightness_contrast']['brightness_limit'],
-            contrast_limit=cfg['brightness_contrast']['contrast_limit'],
-            p=cfg['brightness_contrast']['probability']
-        ),
-        alb.GaussNoise(
-            std_range=(float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1])),
-            mean_range=(float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1])),
-            p=cfg['gauss_noise']['probability']
-        ),
-        alb.Normalize(mean=config["mean"], std=config["std"]),
-        ToTensorV2()
+        *_flip_rotate(cfg),
+        _affine(cfg),
+        _clahe(cfg),
+        _brightness_contrast(cfg),
+        _gamma(cfg),
+        _gauss_noise(cfg),
+        *_resize_normalize(config)[1:]
     ]
 
-def _get_transformer_synthetic_pipeline(config, cfg):
+def _transformer_light(config, cfg):
     return [
-        alb.Affine(
-            translate_percent={"x": (float(cfg['affine']['translate_percent']['x'][0]), float(cfg['affine']['translate_percent']['x'][1])),
-                              "y": (float(cfg['affine']['translate_percent']['y'][0]), float(cfg['affine']['translate_percent']['y'][1]))},
-            scale=(float(cfg['affine']['scale'][0]), float(cfg['affine']['scale'][1])),
-            rotate=(float(cfg['affine']['rotate'][0]), float(cfg['affine']['rotate'][1])),
-            p=cfg['affine']['probability']
-        ),
-        alb.ElasticTransform(alpha=cfg['elastic_transform']['alpha'], sigma=cfg['elastic_transform']['sigma'], p=cfg['elastic_transform']['probability']),
-        alb.Perspective(scale=(float(cfg['perspective']['scale'][0]), float(cfg['perspective']['scale'][1])), p=cfg['perspective']['probability']),
-        alb.GridDistortion(num_steps=int(cfg['grid_distortion']['num_steps']), distort_limit=float(cfg['grid_distortion']['distort_limit']), p=float(cfg['grid_distortion']['probability'])),
-        alb.RandomToneCurve(scale=cfg['random_tone_curve']['scale'], p=cfg['random_tone_curve']['probability']),
-        alb.GaussNoise(std_range=(float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1])),
-                      mean_range=(float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1])), p=cfg['gauss_noise']['probability']),
-        alb.MultiplicativeNoise(multiplier=(0.9, 1.1), per_channel=False, p=0.2),
         alb.Resize(config["image_size"], config["image_size"]),
-        alb.Normalize(mean=config["mean"], std=config["std"]),
-        ToTensorV2()
+        *_flip_rotate(cfg),
+        _clahe(cfg),
+        _brightness_contrast(cfg),
+        _gamma(cfg),
+        _gauss_noise(cfg),
+        *_resize_normalize(config)[1:]
     ]
 
-def _get_cnn_synthetic_pipeline(config, cfg):
+def _cnn_synthetic(config, cfg):
     return [
-        alb.Affine(
-            translate_percent={"x": (float(cfg['affine']['translate_percent']['x'][0]), float(cfg['affine']['translate_percent']['x'][1])),
-                              "y": (float(cfg['affine']['translate_percent']['y'][0]), float(cfg['affine']['translate_percent']['y'][1]))},
-            scale=(float(cfg['affine']['scale'][0]), float(cfg['affine']['scale'][1])),
-            rotate=(float(cfg['affine']['rotate'][0]), float(cfg['affine']['rotate'][1])),
-            p=cfg['affine']['probability']
-        ),
+        _affine_synthetic(cfg),
         alb.ElasticTransform(alpha=cfg['elastic_transform']['alpha'], sigma=cfg['elastic_transform']['sigma'], p=cfg['elastic_transform']['probability']),
         alb.Perspective(scale=(float(cfg['perspective']['scale'][0]), float(cfg['perspective']['scale'][1])), p=cfg['perspective']['probability']),
         alb.RandomToneCurve(scale=cfg['random_tone_curve']['scale'], p=cfg['random_tone_curve']['probability']),
         alb.MotionBlur(blur_limit=5, p=0.15),
-        alb.GaussNoise(std_range=(float(cfg['gauss_noise']['std_range'][0]), float(cfg['gauss_noise']['std_range'][1])),
-                      mean_range=(float(cfg['gauss_noise']['mean_range'][0]), float(cfg['gauss_noise']['mean_range'][1])), p=cfg['gauss_noise']['probability']),
+        _gauss_noise(cfg),
         alb.MultiplicativeNoise(multiplier=(0.9, 1.1), per_channel=False, p=0.2),
-        alb.Resize(config["image_size"], config["image_size"]),
-        alb.Normalize(mean=config["mean"], std=config["std"]),
-        ToTensorV2()
+        *_resize_normalize(config)
     ]
+
+def _transformer_synthetic(config, cfg):
+    return [
+        _affine_synthetic(cfg),
+        alb.ElasticTransform(alpha=cfg['elastic_transform']['alpha'], sigma=cfg['elastic_transform']['sigma'], p=cfg['elastic_transform']['probability']),
+        alb.Perspective(scale=(float(cfg['perspective']['scale'][0]), float(cfg['perspective']['scale'][1])), p=cfg['perspective']['probability']),
+        alb.GridDistortion(num_steps=int(cfg['grid_distortion']['num_steps']), distort_limit=float(cfg['grid_distortion']['distort_limit']), p=float(cfg['grid_distortion']['probability'])),
+        alb.RandomToneCurve(scale=cfg['random_tone_curve']['scale'], p=cfg['random_tone_curve']['probability']),
+        _gauss_noise(cfg),
+        alb.MultiplicativeNoise(multiplier=(0.9, 1.1), per_channel=False, p=0.2),
+        *_resize_normalize(config)
+    ]
+
+_PIPELINE_REGISTRY = {
+    ("cnn", "heavy"):      _cnn_heavy,
+    ("cnn", "moderate"):   _cnn_moderate,
+    ("cnn", "light"):      _cnn_light,
+    ("cnn", "synthetic"):  _cnn_synthetic,
+    ("transformer", "heavy"):     _transformer_heavy,
+    ("transformer", "moderate"):  _transformer_moderate,
+    ("transformer", "light"):     _transformer_light,
+    ("transformer", "synthetic"): _transformer_synthetic,
+}

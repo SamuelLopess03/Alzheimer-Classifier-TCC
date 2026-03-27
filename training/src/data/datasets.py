@@ -5,9 +5,8 @@ from typing import List, Optional, Dict
 from collections import Counter
 
 from .preprocessing import prepare_image_for_augmentation
-from .utils import count_unique_subjects, resolve_subset_labels
 from .augmentation import get_alzheimer_grayscale_augmentation, create_synthetic_augmentation_for_minority
-from ..utils import load_augmentation_config
+from ..utils import load_augmentation_config, count_unique_subjects, resolve_subset_labels
 
 class DynamicAugmentationDataset(Dataset):
     def __init__(self, subset_dataset: Subset, architecture_name: str):
@@ -16,7 +15,7 @@ class DynamicAugmentationDataset(Dataset):
 
         try:
             size_metric = count_unique_subjects(subset_dataset)
-        except:
+        except Exception:
             size_metric = None
 
         if not size_metric:
@@ -32,33 +31,42 @@ class DynamicAugmentationDataset(Dataset):
             architecture_name=architecture_name
         )
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.subset_dataset)
 
     def _is_idx_synthetic(self, idx: int) -> bool:
         base_dataset = self.subset_dataset
+
         while hasattr(base_dataset, 'dataset'):
             if hasattr(base_dataset, 'indices'):
                 idx = base_dataset.indices[idx]
             base_dataset = base_dataset.dataset
+
         if hasattr(base_dataset, 'is_synthetic'):
             return base_dataset.is_synthetic(idx)
+
         return False
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         is_synthetic = self._is_idx_synthetic(idx)
-        
+        image, label = self.subset_dataset[idx]
+
+        image = prepare_image_for_augmentation(image)
+
         if is_synthetic:
-            image, label = self.subset_dataset[idx]
+            # Amostras sintéticas recebem o pipeline mais agressivo
+            transformed = self.synthetic_transform(image=image)
         else:
-            image, label = self.subset_dataset[idx]
-            image = prepare_image_for_augmentation(image)
+            # Amostras reais recebem o pipeline de treino (dinâmico por tamanho)
             transformed = self.transform(image=image)
-            image = transformed['image']
+
+        image = transformed['image']
 
         if not isinstance(image, torch.Tensor):
             image = torch.as_tensor(image)
+
         label = torch.tensor(label, dtype=torch.long)
+        
         return image, label
 
 class StaticPreprocessedDataset(Dataset):
@@ -66,7 +74,7 @@ class StaticPreprocessedDataset(Dataset):
         self.subset_dataset = subset_dataset
         self.architecture_name = architecture_name
 
-        self.transform = get_alzheimer_grayscale_augmentation(
+        transform = get_alzheimer_grayscale_augmentation(
             architecture_name=architecture_name,
             dataset_size=len(subset_dataset),
             is_training=False
@@ -79,16 +87,16 @@ class StaticPreprocessedDataset(Dataset):
         for idx in range(len(subset_dataset)):
             image, label = subset_dataset[idx]
             image = prepare_image_for_augmentation(image)
-            transformed = self.transform(image=image)
+            transformed = transform(image=image)
             self.preprocessed_data.append(transformed['image'])
             self.labels.append(label)
 
-        print(f"Pré-processamento estático concluído!\n")
+        print("Pré-processamento estático concluído!\n")
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.preprocessed_data)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         return self.preprocessed_data[idx], self.labels[idx]
 
 class SyntheticAugmentedDataset(Dataset):
@@ -96,8 +104,8 @@ class SyntheticAugmentedDataset(Dataset):
             self,
             original_dataset: Subset,
             synthetic_indices: List[int],
-            augmentation_transform: torch.nn.Module,
-            original_transform: torch.nn.Module = None
+            augmentation_transform,
+            original_transform=None
     ):
         self.original_dataset = original_dataset
         self.synthetic_indices = synthetic_indices
@@ -105,13 +113,13 @@ class SyntheticAugmentedDataset(Dataset):
         self.original_transform = original_transform
         self.num_synthetic_copies = len(synthetic_indices)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.original_dataset) + self.num_synthetic_copies
 
     def is_synthetic(self, idx: int) -> bool:
         return idx >= len(self.original_dataset)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         if idx < len(self.original_dataset):
             return self.original_dataset[idx]
 
@@ -130,6 +138,7 @@ class SyntheticAugmentedDataset(Dataset):
 
         image = prepare_image_for_augmentation(image)
         augmented = self.augmentation_transform(image=image)
+        
         return augmented['image'], label
 
 def augment_minority_class(
@@ -153,7 +162,7 @@ def augment_minority_class(
     class_counts = Counter(train_labels)
 
     targets = _calculate_target_counts(
-        class_counts, minority_classes, target_strategy, min_cfg, 
+        class_counts, minority_classes, target_strategy, min_cfg,
         target_ratio, custom_targets, target_percentage
     )
     
@@ -178,30 +187,38 @@ def augment_minority_class(
 
     return final_split
 
-def _calculate_target_counts(class_counts, minority_classes, strategy, config, ratio, custom, percentage):
-    all_classes = set(class_counts.keys())
-    majority_classes = all_classes - set(minority_classes)
-    majority_count = max([class_counts[c] for c in majority_classes]) if majority_classes else max(class_counts.values())
-    
+def _calculate_target_counts(
+    class_counts, minority_classes, strategy, config, ratio, custom, percentage
+) -> Dict[int, int]:
+    majority_classes = set(class_counts.keys()) - set(minority_classes)
+    majority_count = max(class_counts[c] for c in majority_classes) if majority_classes else max(class_counts.values())
+
     targets = {}
     for cl in minority_classes:
         count = class_counts[cl]
-        if strategy == 'balance': targets[cl] = majority_count
-        elif strategy == 'ratio': targets[cl] = int(majority_count * (ratio or 1.0))
-        elif strategy == 'proportional': targets[cl] = int(count * config['strategies']['proportional']['multiplier'])
-        elif strategy == 'custom': targets[cl] = custom[cl]
+        if strategy == 'balance':
+            targets[cl] = majority_count
+        elif strategy == 'ratio':
+            targets[cl] = int(majority_count * (ratio or 1.0))
+        elif strategy == 'proportional':
+            targets[cl] = int(count * config['strategies']['proportional']['multiplier'])
+        elif strategy == 'custom':
+            targets[cl] = custom[cl]
         elif strategy == 'percentage':
             p = percentage[cl]
             targets[cl] = int((p * sum(class_counts.values())) / (1 - p))
 
     return targets
 
-def _sample_synthetic_indices(split, labels, targets, class_counts, config):
+def _sample_synthetic_indices(
+    split, labels, targets, class_counts, config
+) -> List[int]:
     synthetic_indices = []
     base_seed = config['random_seed']['base']
     
     for cl, target_count in targets.items():
         num_new = max(0, target_count - class_counts[cl])
+        
         if num_new > 0:
             print(f"   Classe {cl}: gerando {num_new} amostras sintéticas")
             indices_in_split = [split.indices[i] for i, l in enumerate(labels) if l == cl]
