@@ -156,27 +156,31 @@ def create_model(
             nn.Linear(hidden_units, num_classes)
         )
 
-    if arch_cfg.get('freeze_backbone', False):
-        print(f"Congelando backbone (apenas {arch_cfg['classifier_layer']} treinável)\n")
+    freeze_backbone = arch_cfg.get('freeze_backbone', False)
+    classifier_layer = arch_cfg.get('classifier_layer', 'fc')
+    
+    if freeze_backbone:
+        # Congela todo o backbone, deixa apenas o classificador (head) treinável
+        for param in model.parameters():
+            param.requires_grad = False
+            
         for name, param in model.named_parameters():
-            if not any(layer in name for layer in ['classifier', 'fc', 'head']):
-                param.requires_grad = False
-
-    elif arch_cfg.get('freeze_patch_embed', False):
-        freeze_blocks = arch_cfg.get('freeze_first_blocks', 0)
-        print(f"Congelando patch embedding e primeiros {freeze_blocks} blocos\n")
-        for name, param in model.named_parameters():
-            if 'patch_embed' in name:
-                param.requires_grad = False
-            elif any(f'blocks.{i}' in name for i in range(freeze_blocks)):
-                param.requires_grad = False
+            if classifier_layer in name or any(k in name for k in ['classifier', 'fc', 'head']):
+                param.requires_grad = True
+                
+        print(f"Backbone TOTALMENTE congelado para {architecture_name} (apenas o head será treinado)")
+    else:
+        # Treinamento completo (Backbone + Head)
+        for param in model.parameters():
+            param.requires_grad = True
+        print(f"Treinamento TOTAL (Backbone + Head) habilitado para {architecture_name}")
 
     model = model.to(device)
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total_params = sum(p.numel() for p in model.parameters())
 
-    print(f"Modelo criado")
+    print(f"Modelo criado (Congelamento Parcial)")
     print(f"   Parâmetros treináveis: {trainable_params:,}")
     print(f"   Parâmetros totais: {total_params:,}")
     print(f"   Ratio: {trainable_params / total_params * 100:.1f}%\n")
@@ -248,35 +252,62 @@ def create_model_with_architecture(
     else:
         raise ValueError(f"Loss function não suportada: {loss_function}\n")
 
-    trainable_params = filter(lambda p: p.requires_grad, model.parameters())
+    fine_tuning_cfg = hyperparams_config.get('fine_tuning', {})
+    backbone_lr_ratios = fine_tuning_cfg.get('backbone_lr_ratio', {'cnn': 0.01, 'transformer': 0.001})
+    arch_type = 'transformer' if is_transformer else 'cnn'
+    backbone_lr_ratio = float(backbone_lr_ratios.get(arch_type, 0.01))
+
+    backbone_lr = lr * backbone_lr_ratio
+    head_lr = lr
+
+    classifier_layer = arch_cfg['classifier_layer']
+    head_params = []
+    backbone_params = []
+
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if classifier_layer in name:
+            head_params.append(param)
+        else:
+            backbone_params.append(param)
+
+    print(f"\nFine-Tuning com LR Diferencial:")
+    print(f"   Backbone LR: {backbone_lr:.2e} (ratio: {backbone_lr_ratio})")
+    print(f"   Head LR:     {head_lr:.2e}")
+    print(f"   Parâmetros Backbone: {sum(p.numel() for p in backbone_params):,}")
+    print(f"   Parâmetros Head:     {sum(p.numel() for p in head_params):,}\n")
+
     opt_cfg = hyperparams_config['optimizer_config'][optimizer_name.lower()]
 
+    param_groups = []
+    if backbone_params:
+        param_groups.append({'params': backbone_params, 'lr': backbone_lr})
+    if head_params:
+        param_groups.append({'params': head_params, 'lr': head_lr})
+        
     if optimizer_name.lower() == 'adam':
         optimizer = optim.Adam(
-            trainable_params,
-            lr=lr,
+            param_groups,
             weight_decay=float(opt_cfg['weight_decay'])
         )
-        print(f"Optimizer: Adam (lr={lr}, wd={opt_cfg['weight_decay']})\n")
+        print(f"Optimizer: Adam (backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e}, wd={opt_cfg['weight_decay']})\n")
 
     elif optimizer_name.lower() == 'sgd':
         optimizer = optim.SGD(
-            trainable_params,
-            lr=lr,
+            param_groups,
             momentum=opt_cfg['momentum'],
             weight_decay=float(opt_cfg['weight_decay'])
         )
-        print(f"Optimizer: SGD (lr={lr}, momentum={opt_cfg['momentum']}, wd={opt_cfg['weight_decay']})\n")
+        print(f"Optimizer: SGD (backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e})\n")
 
     elif optimizer_name.lower() == 'adamw':
-        arch_type = 'transformer' if is_transformer else 'cnn'
         wd = float(opt_cfg['weight_decay'][arch_type])
         optimizer = optim.AdamW(
-            trainable_params,
-            lr=lr,
+            param_groups,
             weight_decay=wd
         )
-        print(f"Optimizer: AdamW (lr={lr}, wd={wd})\n")
+        print(f"Optimizer: AdamW (backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e}, wd={wd})\n")
 
     else:
         raise ValueError(f"Optimizer não suportado: {optimizer_name}\n")

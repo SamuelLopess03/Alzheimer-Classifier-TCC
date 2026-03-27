@@ -54,7 +54,7 @@ model_config:
     adaptation_layer: "patch_embed.proj"
     classifier_layer: "head"
     freeze_patch_embed: true
-    freeze_first_blocks: 3
+    freeze_backbone: true 
 
   swin_v2_tiny:
     type: "transformer"
@@ -63,37 +63,39 @@ model_config:
     adaptation_layer: "patch_embed.proj"
     classifier_layer: "head"
     freeze_patch_embed: true
-    freeze_first_blocks: 3
+    freeze_backbone: true
+
+# Fine-tuning: backbone descongelado com LR diferencial
+# backbone_lr_ratio: fração do LR principal aplicada ao backbone
+fine_tuning:
+  backbone_lr_ratio:
+    cnn: 0.01
+    transformer: 0.001
 
 # Grid de hiperparâmetros por tipo de arquitetura
 hyperparameter_grids:
-  # CNNs: backbone congelado, só treinamos o classificador (FC head)
-  # LR pode ser mais alto porque os gradientes só atualizam a camada final
   cnn:
-    learning_rate: [5e-4, 1e-4, 5e-5]
-    dropout: [0.2, 0.3, 0.4, 0.5]
-    hidden_units: [256, 512, 1024]
-    optimizer: ["adam", "adamw"]
-    batch_size: [32, 64]
+    learning_rate: [1e-3, 5e-4, 1e-4, 5e-5]
+    dropout: [0.4, 0.5, 0.6, 0.7]
+    hidden_units: [128, 256, 512]
+    optimizer: ["adamw"]
+    batch_size: [16, 32, 64]
     loss_function: ["crossentropy"]
 
-  # ViT: Transformers são muito sensíveis ao LR
-  # LR alto desestabiliza o mecanismo de atenção multi-head
   vit:
-    learning_rate: [5e-5, 1e-5]
-    dropout: [0.1, 0.2, 0.3]
-    hidden_units: [256, 512, 1024]
+    learning_rate: [5e-5, 2e-5, 1e-5, 5e-6]
+    dropout: [0.2, 0.3, 0.4, 0.5]
+    hidden_units: [128, 256, 512]
     optimizer: ["adamw"]
-    batch_size: [32, 64]
+    batch_size: [16, 32, 64]
     loss_function: ["crossentropy"]
 
-  # Swin: similar ao ViT mas um pouco mais estável por usar janelas locais
   swin:
-    learning_rate: [5e-5, 1e-5]
-    dropout: [0.1, 0.2, 0.3]
-    hidden_units: [256, 512, 1024]
+    learning_rate: [5e-5, 2e-5, 1e-5, 5e-6]
+    dropout: [0.2, 0.3, 0.4, 0.5]
+    hidden_units: [128, 256, 512]
     optimizer: ["adamw"]
-    batch_size: [32, 64]
+    batch_size: [16, 32, 64]
     loss_function: ["crossentropy"]
 
 # Configurações de Loss Function
@@ -101,8 +103,8 @@ loss_config:
   crossentropy:
     use_class_weights: true
     label_smoothing:
-      cnn: 0.1
-      transformer: 0.1
+      cnn: 0.15
+      transformer: 0.15
 
 # Configurações de Optimizer
 optimizer_config:
@@ -115,13 +117,18 @@ optimizer_config:
 
   adamw:
     weight_decay:
-      cnn: 1e-3
-      transformer: 0.01
+      cnn: 5e-2
+      transformer: 0.05
+
+# Estratégia de busca de hiperparâmetros (Random Search)
+search_strategy:
+  max_combinations: 60      # Regra de Bergstra & Bengio (~95% confiança para top 5%)
+  n_repetitions: 3          # Repetições para média estatística estável
 
 hardware:
-  device: "cuda"  # cuda, cpu, auto
+  device: "cuda"
   mixed_precision: true
-  num_workers: 4
+  num_workers: 2
   pin_memory: true
 
 # Resultados
