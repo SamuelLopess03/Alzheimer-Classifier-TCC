@@ -7,9 +7,9 @@ from torch.utils.data import DataLoader
 from torch.amp import GradScaler
 
 from .trainer import get_training_config, train_epoch, validation_epoch
-from ..evaluation import calculate_metrics_model
+from ..evaluation import evaluate_performance
 from ..data import DynamicAugmentationDataset, StaticPreprocessedDataset
-from ..utils import load_hyperparameters_config
+from ..utils import load_hyperparameters_config, get_subject_ids_from_dataset
 
 def setup_training_environment(is_multiclass: bool) -> Dict:
     config = get_training_config(is_multiclass)
@@ -97,6 +97,7 @@ def train_single_epoch(model: nn.Module, train_loader: DataLoader,
 def validate_single_epoch(model: nn.Module, val_loader: DataLoader,
                           criterion: nn.Module, device: torch.device,
                           class_names: list, is_multiclass: bool,
+                          val_subject_ids: list,
                           train_loss: float, log_to_wandb: bool = False) \
         -> Tuple[np.ndarray, np.ndarray, np.ndarray, float, Dict]:
     y_true, y_pred, y_pred_proba, val_loss = validation_epoch(
@@ -107,12 +108,13 @@ def validate_single_epoch(model: nn.Module, val_loader: DataLoader,
         use_amp=True
     )
 
-    metrics = calculate_metrics_model(
+    metrics = evaluate_performance(
         y_true=y_true,
         y_pred=y_pred,
+        y_prob=y_pred_proba,
+        subject_ids=val_subject_ids,
         class_names=class_names,
         val_loss=val_loss,
-        train_loss=train_loss,
         log_to_wandb=log_to_wandb,
         is_multiclass=is_multiclass
     )
@@ -147,8 +149,8 @@ def print_epoch_metrics(epoch: int, num_epochs: int, train_loss: float,
     print(f"\nEpoch {epoch + 1}/{num_epochs}")
     print("-" * 60)
     print(f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc * 100:.2f}%")
-    print(f"Val Loss: {metrics['val_loss']:.4f} | Val Acc: {metrics['accuracy'] * 100:.2f}%")
-    print(f"Val F1: {metrics['f1_score'] * 100:.2f}% | Balanced Acc: {metrics['balanced_accuracy'] * 100:.2f}%")
+    print(f"Val Loss:   {metrics['val_loss']:.4f} | F1 (Subj): {metrics['f1_score'] * 100:.2f}%")
+    print(f"Acurácia (Subj): {metrics['accuracy'] * 100:.2f}%")
 
 def train_final_model(
         model: nn.Module,
@@ -200,8 +202,14 @@ def train_final_model(
         num_workers=num_workers,
         pin_memory=pin_memory
     )
+    
+    val_subject_ids = get_subject_ids_from_dataset(val_split)
 
     for epoch in range(env_config['num_epochs']):
+        # Se for um Subset dinâmico (SubjectSamplingSubset), re-amostra as fatias para esta época
+        if hasattr(train_split, 'resample'):
+            train_split.resample()
+
         train_dataset = DynamicAugmentationDataset(
             subset_dataset=train_split,
             architecture_name=hyperparameters['architecture_name']
@@ -223,7 +231,8 @@ def train_final_model(
 
         y_true, y_pred, y_pred_proba, val_loss, metrics = validate_single_epoch(
             model, val_loader, criterion, device,
-            env_config['class_names'], is_multiclass, train_loss, log_to_wandb=False
+            env_config['class_names'], is_multiclass, 
+            val_subject_ids, train_loss, log_to_wandb=False
         )
 
         metrics['val_loss'] = val_loss

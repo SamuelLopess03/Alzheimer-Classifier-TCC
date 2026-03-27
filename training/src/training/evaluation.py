@@ -18,9 +18,9 @@ from ..visualization import (
     log_confusion_matrix_figure, log_roc_curve_figure,
     close_figure
 )
-from ..evaluation import calculate_metrics_model
+from ..evaluation import evaluate_performance
 from ..data import StaticPreprocessedDataset
-from ..utils import load_hyperparameters_config
+from ..utils import load_hyperparameters_config, get_subject_ids_from_dataset
 
 def initialize_wandb_tracking(training_results: Dict, hyperparameters: dict,
                               optimizer: torch.optim.Optimizer,
@@ -188,7 +188,8 @@ def generate_gradcam_visualizations(model: nn.Module,
 def evaluate_on_test_set(model: nn.Module, test_loader: DataLoader,
                          criterion: nn.Module, device: torch.device,
                          checkpoint_file: str, class_names: list,
-                         is_multiclass: bool, wandb_enabled: bool) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict]:
+                         is_multiclass: bool, wandb_enabled: bool,
+                         test_subject_ids: list) -> Tuple[np.ndarray, np.ndarray, np.ndarray, Dict]:
     checkpoint = torch.load(checkpoint_file, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
 
@@ -200,12 +201,13 @@ def evaluate_on_test_set(model: nn.Module, test_loader: DataLoader,
         use_amp=True
     )
 
-    test_metrics = calculate_metrics_model(
+    test_metrics = evaluate_performance(
         y_true=y_true,
         y_pred=y_pred,
+        y_prob=y_pred_proba,
+        subject_ids=test_subject_ids,
         class_names=class_names,
         val_loss=test_loss,
-        train_loss=0.0,
         log_to_wandb=wandb_enabled,
         is_multiclass=is_multiclass
     )
@@ -213,24 +215,17 @@ def evaluate_on_test_set(model: nn.Module, test_loader: DataLoader,
     return y_true, y_pred, y_pred_proba, test_metrics
 
 def print_test_metrics(test_metrics: Dict, model_type: str, is_multiclass: bool):
-    print(f"\nResultados Finais (Test Set - {model_type}):")
+    print(f"\nResultados Finais (PACIENTES - {model_type}):")
     print(f"{'-' * 60}")
-    print(f"  Accuracy: {test_metrics['accuracy'] * 100:.2f}%")
-    print(f"  Balanced Acc: {test_metrics['balanced_accuracy'] * 100:.2f}%")
     print(f"  F1-Score: {test_metrics['f1_score'] * 100:.2f}%")
-
+    print(f"  Acurácia: {test_metrics['accuracy'] * 100:.2f}%")
+    print(f"  Precisão: {test_metrics['precision'] * 100:.2f}%")
+    print(f"  Recall/Sensib: {test_metrics['recall'] * 100:.2f}%")
+    
     if not is_multiclass:
-        print(f"  Sensitivity: {test_metrics['recall'] * 100:.2f}%")
-        print(f"  Specificity: {test_metrics['specificity'] * 100:.2f}%")
-        print(f"  Precision: {test_metrics['precision'] * 100:.2f}%")
-        print(f"  NPV: {test_metrics['negative_predictive_value'] * 100:.2f}%")
+        print(f"  Especificidade: {test_metrics['specificity'] * 100:.2f}%")
     else:
         print(f"  F1 (Macro): {test_metrics.get('f1_macro', 0) * 100:.2f}%")
-        print(f"  Precision (Weighted): {test_metrics['precision'] * 100:.2f}%")
-        print(f"  Recall (Weighted): {test_metrics['recall'] * 100:.2f}%")
-
-    print(f"  MCC: {test_metrics['matthews_correlation_coefficient']:.4f}")
-    print(f"  Cohen's Kappa: {test_metrics['cohen_kappa']:.4f}")
     print(f"{'-' * 60}\n")
 
 def generate_and_save_visualizations(y_true: np.ndarray, y_pred_proba: np.ndarray, test_metrics: Dict,
@@ -334,10 +329,13 @@ def evaluate_model(
         hyperparameters.get('max_grad_norm', 1.0)
     )
 
+    test_subject_ids = get_subject_ids_from_dataset(test_dataset)
+
     y_true, y_pred, y_pred_proba, test_metrics = evaluate_on_test_set(
         model, test_loader, criterion, device,
         checkpoint_file, class_names,
-        is_multiclass, wandb_enabled
+        is_multiclass, wandb_enabled,
+        test_subject_ids
     )
 
     print_test_metrics(test_metrics, model_type, is_multiclass)

@@ -13,99 +13,103 @@ from sklearn.metrics import (
     roc_auc_score
 )
 from sklearn.preprocessing import label_binarize
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
+import pandas as pd
+from ..utils import extract_subject_id
 
-def calculate_metrics_model(
+def evaluate_performance(
         y_true: np.ndarray,
         y_pred: np.ndarray,
+        y_prob: np.ndarray,
+        subject_ids: List[str],
         class_names: Optional[List[str]] = None,
         val_loss: float = 0.0,
-        train_loss: float = 0.0,
         repetition_number: int = 1,
         epoch_number: int = 1,
         log_to_wandb: bool = True,
         is_multiclass: bool = False
 ) -> Dict:
+    if len(y_true) != len(subject_ids):
+        print(f"Erro: Tamanho de y_true ({len(y_true)}) diferente de subject_ids ({len(subject_ids)})")
+        return {}
+
+    # 1. Agregação e Voto Majoritário por Sujeito
+    df = pd.DataFrame({
+        'subject_id': subject_ids,
+        'y_true': y_true,
+        'y_pred': y_pred
+    })
+
+    subject_agg = df.groupby('subject_id').agg({
+        'y_true': 'first',
+        'y_pred': lambda x: x.mode().iloc[0]
+    }).reset_index()
+
+    y_subj_true = subject_agg['y_true'].values
+    y_subj_pred = subject_agg['y_pred'].values
+    
+    # 2. Cálculo das Métricas (Sklearn)
     if class_names is None:
         if is_multiclass:
-            class_names = ['Mild Dementia', 'Moderate Dementia', 'Very mild Dementia']
+            class_names = ['Mild+Moderate Dementia', 'Very mild Dementia']
         else:
             class_names = ['Demented', 'Non Demented']
-
+    
     num_classes = len(class_names)
-
-    accuracy = accuracy_score(y_true, y_pred)
-    balanced_acc = balanced_accuracy_score(y_true, y_pred)
-
     labels = list(range(num_classes))
-    precision, recall, f1, support = precision_recall_fscore_support(
-        y_true, y_pred,
-        average=None,
-        labels=labels,
-        zero_division=0
+    
+    # Métricas Globais
+    accuracy = accuracy_score(y_subj_true, y_subj_pred)
+    balanced_acc = balanced_accuracy_score(y_subj_true, y_subj_pred)
+    mcc = matthews_corrcoef(y_subj_true, y_subj_pred)
+    kappa = cohen_kappa_score(y_subj_true, y_subj_pred)
+    
+    # Precision, Recall, F1 (Weighted, Macro e Per-Class)
+    p_class, r_class, f1_class, support = precision_recall_fscore_support(
+        y_subj_true, y_subj_pred, average=None, labels=labels, zero_division=0
     )
-
-    precision_weighted, recall_weighted, f1_weighted, _ = precision_recall_fscore_support(
-        y_true, y_pred,
-        average='weighted',
-        zero_division=0
+    p_w, r_w, f1_w, _ = precision_recall_fscore_support(
+        y_subj_true, y_subj_pred, average='weighted', labels=labels, zero_division=0
     )
-
-    precision_macro, recall_macro, f1_macro, _ = precision_recall_fscore_support(
-        y_true, y_pred,
-        average='macro',
-        zero_division=0
+    p_m, r_m, f1_m, _ = precision_recall_fscore_support(
+        y_subj_true, y_subj_pred, average='macro', labels=labels, zero_division=0
     )
-
-    cm = confusion_matrix(y_true, y_pred, labels=labels)
-    tp, fn, fp, tn = 0, 0, 0, 0
-
-    mcc = matthews_corrcoef(y_true, y_pred)
-    kappa = cohen_kappa_score(y_true, y_pred)
-
+    
+    cm = confusion_matrix(y_subj_true, y_subj_pred, labels=labels)
+    
+    # Dicionário Consolidado
     metrics = {
-        # Loss
-        'train_loss': float(train_loss),
         'val_loss': float(val_loss),
-
-        # Overall metrics
         'accuracy': float(accuracy),
         'balanced_accuracy': float(balanced_acc),
-
-        # Averaged metrics
-        'precision': float(precision_weighted),
-        'recall': float(recall_weighted),
-        'f1_score': float(f1_weighted),
-
-        'precision_macro': float(precision_macro),
-        'recall_macro': float(recall_macro),
-        'f1_macro': float(f1_macro),
-
-        # Correlation
         'matthews_correlation_coefficient': float(mcc),
         'cohen_kappa': float(kappa),
-
-        # Per-class details
-        'precision_per_class': [float(p) for p in precision],
-        'recall_per_class': [float(r) for r in recall],
-        'f1_per_class': [float(f) for f in f1],
+        
+        # Weighted Metrics (Padrão)
+        'precision': float(p_w),
+        'recall': float(r_w),
+        'f1_score': float(f1_w),
+        
+        # Macro Metrics (Úteis para desbalanceamento)
+        'precision_macro': float(p_m),
+        'recall_macro': float(r_m),
+        'f1_macro': float(f1_m),
+        
+        # Detalhes por classe
+        'precision_per_class': [float(p) for p in p_class],
+        'recall_per_class': [float(r) for r in r_class],
+        'f1_per_class': [float(f) for f in f1_class],
         'support_per_class': [int(s) for s in support],
-
-        # Confusion matrix
+        
         'confusion_matrix': cm.tolist(),
-
-        # Classification report
         'classification_report': classification_report(
-            y_true, y_pred,
-            target_names=class_names,
-            labels=labels,
-            zero_division=0
+            y_subj_true, y_subj_pred, target_names=class_names, labels=labels, zero_division=0
         )
     }
 
+    # Métricas de Erro Especializadas (Specificity, etc.)
     if not is_multiclass and num_classes == 2:
-        tp, fn, fp, tn = cm.ravel()
-
+        tn, fp, fn, tp = cm.ravel()
         specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
         npv = tn / (tn + fn) if (tn + fn) > 0 else 0.0
         fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
@@ -121,87 +125,41 @@ def calculate_metrics_model(
             'false_negative': int(fn),
             'true_positive': int(tp),
         })
-
     else:
+        # Multiclasse: Macro Médias para Specificity e NPV
         specificities = []
         npvs = []
-
         for i in range(num_classes):
-            tn = np.sum((y_true != i) & (y_pred != i))
-            fp = np.sum((y_true != i) & (y_pred == i))
-            fn = np.sum((y_true == i) & (y_pred != i))
-            tp = np.sum((y_true == i) & (y_pred == i))
-
-            spec = tn / (tn + fp) if (tn + fp) > 0 else 0.0
-            npv = tn / (tn + fn) if (tn + fn) > 0 else 0.0
-
-            specificities.append(float(spec))
-            npvs.append(float(npv))
-
-        total_samples = len(y_true)
-        weighted_spec = sum(
-            specificities[i] * np.sum(y_true == i) / total_samples
-            for i in range(num_classes)
-        )
-        weighted_npv = sum(
-            npvs[i] * np.sum(y_true == i) / total_samples
-            for i in range(num_classes)
-        )
-
-        macro_spec = float(np.mean(specificities))
-        macro_npv = float(np.mean(npvs))
-
+            tn = np.sum((y_subj_true != i) & (y_subj_pred != i))
+            fp = np.sum((y_subj_true != i) & (y_subj_pred == i))
+            fn = np.sum((y_subj_true == i) & (y_subj_pred != i))
+            tp = np.sum((y_subj_true == i) & (y_subj_pred == i))
+            specificities.append(tn / (tn + fp) if (tn + fp) > 0 else 0.0)
+            npvs.append(tn / (tn + fn) if (tn + fn) > 0 else 0.0)
+        
         metrics.update({
-            'specificity': float(weighted_spec),
-            'specificity_macro': macro_spec,
-            'specificity_per_class': specificities,
-            'negative_predictive_value': float(weighted_npv),
-            'npv_macro': macro_npv,
-            'npv_per_class': npvs,
+            'specificity': float(np.mean(specificities)),
+            'specificity_macro': float(np.mean(specificities)),
+            'negative_predictive_value': float(np.mean(npvs)),
+            'npv_macro': float(np.mean(npvs)),
+            'specificity_per_class': [float(s) for s in specificities],
+            'npv_per_class': [float(n) for n in npvs]
         })
 
+    # 3. Log no WandB (Métrica Clínica Completa)
     if log_to_wandb and wandb.run is not None:
         wandb_log = {
             f"rep_{repetition_number}/epoch": epoch_number,
-
-            # Loss
-            f"rep_{repetition_number}/train_loss": train_loss,
-            f"rep_{repetition_number}/val_loss": val_loss,
-
-            # Overall
-            f"rep_{repetition_number}/accuracy": accuracy,
-            f"rep_{repetition_number}/balanced_accuracy": balanced_acc,
-
-            # Averaged metrics
-            f"rep_{repetition_number}/precision_weighted": precision_weighted,
-            f"rep_{repetition_number}/recall_weighted": recall_weighted,
-            f"rep_{repetition_number}/f1_weighted": f1_weighted,
-
-            f"rep_{repetition_number}/precision_macro": precision_macro,
-            f"rep_{repetition_number}/recall_macro": recall_macro,
-            f"rep_{repetition_number}/f1_macro": f1_macro,
-
-            # Correlation
-            f"rep_{repetition_number}/matthews_correlation_coefficient": mcc,
-            f"rep_{repetition_number}/cohen_kappa": kappa,
+            f"rep_{repetition_number}/f1_subj": metrics['f1_score'],
+            f"rep_{repetition_number}/acc_subj": metrics['accuracy'],
+            f"rep_{repetition_number}/mcc_subj": metrics['matthews_correlation_coefficient'],
+            f"rep_{repetition_number}/kappa_subj": metrics['cohen_kappa'],
+            f"rep_{repetition_number}/loss": val_loss,
         }
-
-        if 'specificity' in metrics:
-            wandb_log[f"rep_{repetition_number}/specificity"] = metrics['specificity']
-
-        if not is_multiclass and num_classes == 2:
-            wandb_log.update({
-                f"rep_{repetition_number}/true_negatives": int(tn),
-                f"rep_{repetition_number}/false_positives": int(fp),
-                f"rep_{repetition_number}/false_negatives": int(fn),
-                f"rep_{repetition_number}/true_positives": int(tp),
-            })
-
-        for i, class_name in enumerate(class_names):
-            wandb_log[f"rep_{repetition_number}/precision_{class_name}"] = precision[i]
-            wandb_log[f"rep_{repetition_number}/recall_{class_name}"] = recall[i]
-            wandb_log[f"rep_{repetition_number}/f1_{class_name}"] = f1[i]
-
+        # Adiciona métricas por classe ao WandB
+        for i, name in enumerate(class_names):
+            wandb_log[f"rep_{repetition_number}/f1_{name}"] = metrics['f1_per_class'][i]
+            
         wandb.log(wandb_log)
 
     return metrics
