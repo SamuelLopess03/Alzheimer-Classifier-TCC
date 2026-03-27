@@ -10,7 +10,8 @@ from torchvision.datasets import ImageFolder
 
 from ..models import (
     create_model_with_architecture,
-    get_architecture_specific_param_grid
+    get_architecture_specific_param_grid,
+    get_supported_architectures
 )
 from ..utils import (
     create_stratified_holdout_split,
@@ -309,6 +310,7 @@ def search_best_hyperparameters_holdout(
     val_ratio = data_config['split_ratios']['train_val']
     random_seed = data_config['random_seed']
     stratify = data_config['stratify']
+    max_slices_per_subject = data_config.get('max_slices_per_subject')
 
     minority_config = data_config['minority_augmentation']
     augment_minority = minority_config['enabled']
@@ -337,6 +339,10 @@ def search_best_hyperparameters_holdout(
     print(f"  Max Combinações: {max_combinations}")
     print(f"  Stratify: {stratify}")
     print(f"  Random Seed: {random_seed}")
+    if max_slices_per_subject:
+        print(f"  Slice Sampling: Ativado (max {max_slices_per_subject} fatias/sujeito)")
+    else:
+        print(f"  Slice Sampling: Desativado (todas as fatias serão usadas)")
     print(f"  Augmentação Minoritária: {'SIM' if augment_minority else 'NÃO'}")
     if augment_minority:
         print(f"    Estratégia: {minority_target_strategy}")
@@ -379,7 +385,8 @@ def search_best_hyperparameters_holdout(
             train_dataset,
             train_ratio,
             val_ratio,
-            random_state=random_seed + rep
+            random_state=random_seed + rep,
+            max_slices_per_subject=max_slices_per_subject
         )
 
         if augment_minority:
@@ -540,9 +547,9 @@ def search_best_hyperparameters_holdout(
     return results
 
 def run_grid_search(
-        train_dataset: ImageFolder,
-        model_type: str = 'binary',
-        architectures: Optional[List[str]] = None
+    train_dataset: ImageFolder,
+    model_type: str = 'binary',
+    architectures: Optional[List[str]] = None
 ) -> Dict:
     hyperparams_config = load_hyperparameters_config()
     config = get_model_config(model_type)
@@ -556,10 +563,7 @@ def run_grid_search(
     print(f"{'=' * 80}\n")
 
     if architectures is None:
-        architectures = (
-                hyperparams_config['supported_architectures']['cnn'] +
-                hyperparams_config['supported_architectures']['transformer']
-        )
+        architectures = get_supported_architectures()
 
     print(f"Arquiteturas a serem testadas: {architectures}")
     print(f"Tipo de Modelo: {model_type_display}")
@@ -585,16 +589,11 @@ def run_grid_search(
 
             param_grid = get_architecture_specific_param_grid(arch)
 
-            # Definir número de combinações baseado no tipo de arquitetura
-            # CNNs: espaço de busca maior (144 combos) -> precisam de mais amostras
-            # Transformers: espaço menor (36 combos) -> menos amostras cobrem bem
-            transformer_archs = hyperparams_config['supported_architectures'].get('transformer', [])
-            if arch in transformer_archs:
-                max_combos = 25   # ~56% do espaço de 36 combinações
-            else:
-                max_combos = 55   # ~28% do espaço de 144 combinações
+            search_strategy = hyperparams_config.get('search_strategy', {})
+            max_combos = search_strategy.get('max_combinations', 60)
+            num_reps = search_strategy.get('n_repetitions', 3)
 
-            print(f"Estratégia: Random Search com {max_combos} combinações e 3 repetições\n")
+            print(f"Estratégia: Random Search com {max_combos} combinações e {num_reps} repetições\n")
 
             results = search_best_hyperparameters_holdout(
                 param_grid=param_grid,
@@ -602,8 +601,8 @@ def run_grid_search(
                 device=device,
                 train_dataset=train_dataset,
                 model_type=model_type,
-                n_repetitions=3,            # 3 repetições para média estatística confiável
-                max_combinations=max_combos  # Combinações adaptadas ao tipo de arquitetura
+                n_repetitions=num_reps,
+                max_combinations=max_combos
             )
 
             all_results[arch] = results

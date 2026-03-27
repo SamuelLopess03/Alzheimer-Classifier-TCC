@@ -3,24 +3,81 @@ import numpy as np
 from torch.utils.data import Subset
 from sklearn.model_selection import StratifiedShuffleSplit
 from collections import Counter, defaultdict
-from typing import Tuple
+from typing import Tuple, Optional, List, Dict
 
-from .dataset import extract_subject_id
+from .dataset import extract_subject_id, extract_slice_index
+
+class SubjectSamplingSubset(Subset):
+    def __init__(
+        self, 
+        dataset, 
+        subject_indices: Dict[str, List[int]], 
+        max_slices: Optional[int], 
+        random_state: int = 42,
+        strategy: str = 'random'
+    ):
+        self.subject_indices = subject_indices
+        self.max_slices = max_slices
+        self.strategy = strategy
+        self.rng = np.random.default_rng(random_state)
+        super().__init__(dataset, [])
+        self.resample()
+
+    def resample(self):
+        new_indices = []
+        
+        for sid, indices in self.subject_indices.items():
+            if self.max_slices is not None and len(indices) > self.max_slices:
+                if self.strategy == 'random':
+                    sampled = self.rng.choice(indices, size=self.max_slices, replace=False)
+                    new_indices.extend(sampled.tolist())
+                elif self.strategy == 'middle':
+                    sampled = self._select_middle_slices(indices, self.max_slices)
+                    new_indices.extend(sampled)
+            else:
+                new_indices.extend(indices)
+        
+        self.indices = sorted(new_indices)
+
+    def _select_middle_slices(self, indices, max_n):
+        if max_n is None or len(indices) <= max_n:
+            return indices
+            
+        indexed_indices = []
+        for idx in indices:
+            path, _ = self.dataset.samples[idx]
+            filename = os.path.basename(path)
+            slice_idx = extract_slice_index(filename)
+            indexed_indices.append((slice_idx, idx))
+            
+        indexed_indices.sort()
+        mid = len(indexed_indices) // 2
+        half = max_n // 2
+        start = max(0, mid - half)
+        end = start + max_n
+        if end > len(indexed_indices):
+            end = len(indexed_indices)
+            start = max(0, end - max_n)
+
+        return [item[1] for item in indexed_indices[start:end]]
 
 def create_stratified_holdout_split(
         dataset,
         train_ratio: float = 0.7,
         val_ratio: float = 0.3,
-        random_state: int = 42
+        random_state: int = 42,
+        max_slices_per_subject: Optional[int] = None
 ) -> Tuple[Subset, Subset]:
     print(f"{'-' * 60}")
-    print(f"CRIANDO HOLDOUT SPLIT POR SUJEITO (ESTRATIFICADO)")
+    print(f"CRIANDO HOLDOUT SPLIT POR SUJEITO (DINÂMICO)")
     print(f"{'-' * 60}\n")
 
     print(f"Configuração:")
     print(f"  Train Ratio: {train_ratio:.1%}")
     print(f"  Val Ratio: {val_ratio:.1%}")
-    print(f"  Random State: {random_state}\n")
+    print(f"  Random State: {random_state}")
+    if max_slices_per_subject:
+        print(f"  Max Slices/Subject: {max_slices_per_subject}\n")
 
     total_ratio = train_ratio + val_ratio
     if abs(total_ratio - 1.0) > 1e-6:
@@ -54,24 +111,30 @@ def create_stratified_holdout_split(
         splitter.split(subject_ids, subject_labels)
     )
 
-    train_indices = []
-    val_indices = []
+    train_subject_ids = [subject_ids[i] for i in train_subj_idx]
+    val_subject_ids = [subject_ids[i] for i in val_subj_idx]
 
-    train_subject_ids = []
-    val_subject_ids = []
+    train_subject_indices = {sid: subjects[sid]["indices"] for sid in train_subject_ids}
+    val_subject_indices = {sid: subjects[sid]["indices"] for sid in val_subject_ids}
 
-    for i in train_subj_idx:
-        sid = subject_ids[i]
-        train_indices.extend(subjects[sid]["indices"])
-        train_subject_ids.append(sid)
+    train_dataset = SubjectSamplingSubset(
+        dataset=dataset,
+        subject_indices=train_subject_indices,
+        max_slices=max_slices_per_subject,
+        random_state=random_state,
+        strategy='random'
+    )
 
-    for i in val_subj_idx:
-        sid = subject_ids[i]
-        val_indices.extend(subjects[sid]["indices"])
-        val_subject_ids.append(sid)
+    val_dataset = SubjectSamplingSubset(
+        dataset=dataset,
+        subject_indices=val_subject_indices,
+        max_slices=max_slices_per_subject,
+        random_state=random_state,
+        strategy='middle'
+    )
 
-    train_dataset = Subset(dataset, train_indices)
-    val_dataset = Subset(dataset, val_indices)
+    train_indices = train_dataset.indices
+    val_indices = val_dataset.indices
 
     train_labels = [dataset.samples[i][1] for i in train_indices]
     val_labels = [dataset.samples[i][1] for i in val_indices]

@@ -23,6 +23,7 @@ data:
     test: 0.2
   stratify: true
   random_seed: 42
+  max_slices_per_subject: 45
 
   # Classes minoritárias para augmentação
   minority_classes: [0]
@@ -45,17 +46,16 @@ data:
 training:
   epochs: 150
   patience: 25  # Early stopping
-  min_delta: 0.001
 
-  # Scheduler
+  # Scheduler - Reduce on Plateau
   scheduler:
-    type: "step"  # step, cosine, reduce_on_plateau
+    type: "reduce_on_plateau"
     params:
-      step_size: 10
-      gamma: 0.1
+      factor: 0.2
+      patience: 5
+      min_lr: 1e-7
 
 validation:
-  eval_frequency: 1  # Avaliar a cada N épocas
   metrics:
     - "accuracy"
     - "precision"
@@ -66,10 +66,7 @@ validation:
 
 checkpoint:
   save_path: "../../shared/models/binary"
-  save_best_only: true
   monitor: "val_f1_score"
-  mode: "max"
-  save_frequency: 5  # Salvar checkpoint a cada N épocas
 
 logging:
   wandb:

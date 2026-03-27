@@ -8,11 +8,42 @@ from typing import Tuple, Optional, List, Dict
 from collections import defaultdict
 from torchvision import datasets
 
-def extract_subject_id(filename: str) -> str:
-    match = re.search(r'(OAS\d+_\d+)', filename)
-    if match:
-        return match.group(1)
-    raise ValueError(f"Não foi possível extrair Subject ID do arquivo: {filename}")
+from .subject_utils import extract_subject_id, extract_slice_index
+
+def find_dataset_classes(dataset_path: str) -> Optional[List[str]]:
+    classes = []
+
+    try:
+        data_folder = dataset_path
+
+        for item in os.listdir(data_folder):
+            item_path = os.path.join(data_folder, item)
+            if os.path.isdir(item_path) and has_images(item_path):
+                classes.append(item)
+
+        classes.sort()
+
+    except Exception as e:
+        print(f"\nErro ao buscar classes: {e}\n")
+        return None
+
+    return classes if classes else None
+
+def has_images(folder_path: str, min_files: int = 1) -> bool:
+    image_extensions = {'.jpg', '.jpeg'}
+    image_count = 0
+
+    try:
+        for file in os.listdir(folder_path):
+            if any(file.lower().endswith(ext) for ext in image_extensions):
+                image_count += 1
+                if image_count >= min_files:
+                    return True
+    except Exception as e:
+        print(f"\nErro ao buscar images: {e}\n")
+        return False
+
+    return False
 
 def download_kaggle_dataset(
         dataset_name: str,
@@ -91,41 +122,6 @@ def download_kaggle_dataset(
     print("-" * 60)
 
     return True, classes
-
-def find_dataset_classes(dataset_path: str) -> Optional[List[str]]:
-    classes = []
-
-    try:
-        data_folder = dataset_path
-
-        for item in os.listdir(data_folder):
-            item_path = os.path.join(data_folder, item)
-            if os.path.isdir(item_path) and has_images(item_path):
-                classes.append(item)
-
-        classes.sort()
-
-    except Exception as e:
-        print(f"\nErro ao buscar classes: {e}\n")
-        return None
-
-    return classes if classes else None
-
-def has_images(folder_path: str, min_files: int = 1) -> bool:
-    image_extensions = {'.jpg', '.jpeg'}
-    image_count = 0
-
-    try:
-        for file in os.listdir(folder_path):
-            if any(file.lower().endswith(ext) for ext in image_extensions):
-                image_count += 1
-                if image_count >= min_files:
-                    return True
-    except Exception as e:
-        print(f"\nErro ao buscar images: {e}\n")
-        return False
-
-    return False
 
 def split_dataset_train_test(
         dataset_path: str,

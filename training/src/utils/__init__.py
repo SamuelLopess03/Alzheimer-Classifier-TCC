@@ -1,8 +1,14 @@
 from .dataset import (
     download_kaggle_dataset,
     split_dataset_train_test,
-    extract_subject_id,
     validate_image_files
+)
+
+from .subject_utils import (
+    extract_subject_id,
+    extract_slice_index,
+    get_subject_ids_from_dataset,
+    resolve_dataset_chain
 )
 
 from .split import (
@@ -26,6 +32,8 @@ __all__ = [
     "split_dataset_train_test",
     "extract_subject_id",
     "validate_image_files",
+    "get_subject_ids_from_dataset",
+    "extract_slice_index",
 
     # Split functions
     "create_stratified_holdout_split",

@@ -31,6 +31,7 @@ data:
     test: 0.2
   stratify: true
   random_seed: 42
+  max_slices_per_subject: 45
 
   # Classes minoritárias para augmentação
   minority_classes: [0]  # Mild+Moderate é minoritária
@@ -53,19 +54,16 @@ data:
 training:
   epochs: 150
   patience: 25  # Early stopping
-  min_delta: 0.001
 
-  # Scheduler
+  # Scheduler - Reduce on Plateau
   scheduler:
-    type: "reduce_on_plateau"  # step, cosine, reduce_on_plateau
+    type: "reduce_on_plateau"
     params:
-      mode: "max"
-      factor: 0.5
+      factor: 0.2
       patience: 5
-      min_lr: 1e-6
+      min_lr: 1e-7
 
 validation:
-  eval_frequency: 1  # Avaliar a cada N épocas
   metrics:
     - "accuracy"
     - "precision"
@@ -76,10 +74,7 @@ validation:
 
 checkpoint:
   save_path: "../../shared/models/multiclass"
-  save_best_only: true
   monitor: "val_f1_score"
-  mode: "max"
-  save_frequency: 5  # Salvar checkpoint a cada N épocas
 
 logging:
   wandb:

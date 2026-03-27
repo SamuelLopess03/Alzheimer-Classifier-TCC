@@ -1,19 +1,71 @@
+import os
+import platform
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.amp import autocast, GradScaler
+from torch.optim import lr_scheduler
 import numpy as np
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
 from ..data import DynamicAugmentationDataset, StaticPreprocessedDataset
-from ..evaluation import calculate_metrics_model
-from ..utils import load_binary_config, load_multiclass_config, load_hyperparameters_config
+from ..evaluation import evaluate_performance
+from ..utils import (
+    load_binary_config, load_multiclass_config, load_hyperparameters_config,
+    get_subject_ids_from_dataset
+)
 
 def get_training_config(is_multiclass: bool = False) -> Dict:
     if is_multiclass:
         return load_multiclass_config()
     else:
         return load_binary_config()
+
+def create_scheduler(
+        optimizer: torch.optim.Optimizer,
+        scheduler_config: Dict,
+        num_epochs: int
+) -> Optional[lr_scheduler.LRScheduler]:
+    scheduler_type = scheduler_config.get('type', 'cosine')
+    params = scheduler_config.get('params', {})
+
+    if scheduler_type == 'step':
+        step_size = int(params.get('step_size', 10))
+        gamma = float(params.get('gamma', 0.1))
+        scheduler = lr_scheduler.StepLR(
+            optimizer,
+            step_size=step_size,
+            gamma=gamma
+        )
+        print(f"Scheduler: StepLR (step_size={step_size}, gamma={gamma})\n")
+
+    elif scheduler_type == 'cosine':
+        eta_min = float(params.get('eta_min', 1e-7))
+        scheduler = lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=num_epochs,
+            eta_min=eta_min
+        )
+        print(f"Scheduler: CosineAnnealingLR (T_max={num_epochs}, eta_min={eta_min})\n")
+
+    elif scheduler_type == 'reduce_on_plateau':
+        factor = float(params.get('factor', 0.5))
+        patience = int(params.get('patience', 5))
+        min_lr = float(params.get('min_lr', 1e-7))
+        scheduler = lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode='min',
+            factor=factor,
+            patience=patience,
+            min_lr=min_lr
+        )
+        print(f"Scheduler: ReduceLROnPlateau (factor={factor}, patience={patience}, min_lr={min_lr})\n")
+
+    else:
+        print(f"Scheduler desconhecido: {scheduler_type}. Nenhum scheduler será usado.\n")
+        return None
+
+    return scheduler
 
 def train_epoch(
         model: nn.Module,
@@ -34,8 +86,8 @@ def train_epoch(
 
     for batch_idx, (inputs, labels) in enumerate(train_loader):
         try:
-            inputs: torch.Tensor = inputs.to(device)
-            labels: torch.Tensor = labels.to(device)
+            inputs: torch.Tensor = inputs.to(device, non_blocking=True)
+            labels: torch.Tensor = labels.to(device, non_blocking=True)
 
             optimizer.zero_grad()
 
@@ -202,11 +254,15 @@ def train_holdout_model(
 
     scaler = GradScaler(device='cuda') if mixed_precision and device.type == 'cuda' else None
 
+    scheduler_config = training_config.get('scheduler', {'type': 'cosine', 'params': {}})
+    scheduler = create_scheduler(optimizer, scheduler_config, num_epochs)
+
     print("Criando dataset de validação (preprocessing estático)...\n")
     val_dataset = StaticPreprocessedDataset(
         subset_dataset=val_split,
         architecture_name=architecture_name
     )
+    val_subject_ids = get_subject_ids_from_dataset(val_dataset)
 
     val_loader = DataLoader(
         val_dataset,
@@ -220,6 +276,9 @@ def train_holdout_model(
         print(f"\n{'-' * 60}")
         print(f"EPOCH {epoch + 1}/{num_epochs}")
         print(f"{'-' * 60}\n")
+
+        if hasattr(train_split, 'resample'):
+            train_split.resample()
 
         train_dataset = DynamicAugmentationDataset(
             subset_dataset=train_split,
@@ -255,12 +314,14 @@ def train_holdout_model(
             use_amp=mixed_precision
         )
 
-        metrics = calculate_metrics_model(
+        # Avaliação CLÍNICA (Apenas Sujeito)
+        metrics = evaluate_performance(
             y_true=y_true,
             y_pred=y_pred,
+            y_prob=y_pred_proba,
+            subject_ids=val_subject_ids,
             class_names=class_names,
             val_loss=val_loss,
-            train_loss=train_loss,
             repetition_number=repetition_number,
             epoch_number=epoch + 1,
             log_to_wandb=config['logging']['wandb']['enabled'],
@@ -269,28 +330,34 @@ def train_holdout_model(
 
         print(f"\nResultados do Epoch {epoch + 1}:")
         print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_accuracy * 100:.2f}%")
-        print(f"  Val Loss:   {val_loss:.4f} | Val Acc:   {metrics['accuracy'] * 100:.2f}%")
-        print(f"  Balanced Acc: {metrics['balanced_accuracy'] * 100:.2f}%")
-        print(f"  F1-Score:     {metrics['f1_score'] * 100:.2f}%")
-
-        if not is_multiclass:
-            print(f"  Sensitivity:  {metrics['recall'] * 100:.2f}%")
-            print(f"  Specificity:  {metrics['specificity'] * 100:.2f}%")
-            print(f"  Precision:    {metrics['precision'] * 100:.2f}%")
+        print(f"  Val Loss:   {val_loss:.4f}")
+        
+        print(f"\nANÁLISE POR SUJEITO (N={len(set(val_subject_ids))}):")
+        print(f"  F1-Score: {metrics['f1_score'] * 100:.2f}% | Acurácia: {metrics['accuracy'] * 100:.2f}%")
+        
+        if is_multiclass:
+             print(f"  F1 (Macro): {metrics.get('f1_macro', 0) * 100:.2f}%")
         else:
-            print(f"  F1 (Macro):   {metrics.get('f1_macro', 0) * 100:.2f}%")
-            print(f"  Recall (Weighted): {metrics['recall'] * 100:.2f}%")
-            print(f"  Precision (Weighted): {metrics['precision'] * 100:.2f}%")
+             print(f"  Recall/Sensib: {metrics['recall'] * 100:.2f}%")
 
+        # SELEÇÃO DO MELHOR MODELO: Baseada no F1-Score do Sujeito
         if metrics['f1_score'] > best_f1_score:
             best_f1_score = metrics['f1_score']
             best_metrics = metrics
             patience_counter = 0
-
-            print(f"\nNovo melhor F1-Score: {best_f1_score * 100:.2f}%!")
+            print(f"\nNovo melhor F1-Score (Sujeito): {best_f1_score * 100:.2f}%!")
         else:
             patience_counter += 1
-            print(f"\nPatience: {patience_counter}/{early_stopping_patience}")
+            print(f"\nPatience: {patience_counter}/{early_stopping_patience} (Melhor F1: {best_f1_score * 100:.2f}%)")
+
+        if scheduler is not None:
+            if isinstance(scheduler, lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(val_loss)
+            else:
+                scheduler.step()
+
+            current_lrs = [f"{pg['lr']:.2e}" for pg in optimizer.param_groups]
+            print(f"  LRs Atuais: {current_lrs}")
 
         if patience_counter >= early_stopping_patience:
             print(f"\nEarly stopping ativado no epoch {epoch + 1}")
@@ -305,12 +372,9 @@ def train_holdout_model(
     print(f"TREINAMENTO CONCLUÍDO - Repetição {repetition_number} ({model_type})")
     print(f"{'-' * 60}")
     print(f"  Melhor F1-Score: {best_f1_score * 100:.2f}%")
-    print(f"  Balanced Acc: {best_metrics['balanced_accuracy'] * 100:.2f}%")
-    if not is_multiclass:
-        print(f"  Sensitivity: {best_metrics['recall'] * 100:.2f}%")
-        print(f"  Specificity: {best_metrics['specificity'] * 100:.2f}%")
-    else:
-        print(f"  F1 (Macro): {best_metrics.get('f1_macro', 0) * 100:.2f}%")
+    print(f"  Acurácia: {best_metrics['accuracy'] * 100:.2f}%")
+    if is_multiclass:
+        print(f"  F1 Macro: {best_metrics.get('f1_macro', 0) * 100:.2f}%")
     print(f"{'-' * 60}\n")
 
     return result
