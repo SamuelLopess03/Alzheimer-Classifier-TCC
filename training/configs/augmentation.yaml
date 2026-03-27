@@ -1,10 +1,10 @@
 # Configurações de Data Augmentation
 
-# Configurações por tamanho de dataset
+# Configurações por número de SUJEITOS (pacientes) únicos
 dataset_size_thresholds:
-  small: 20000    # <20k: augmentação pesada
-  medium: 50000   # <50k: augmentação moderada
-  large: 50000    # ≥50k: augmentação leve
+  small: 200      # <200 sujeitos: augmentação pesada
+  medium: 500     # <500 sujeitos: augmentação moderada
+  large: 500      # ≥500 sujeitos: augmentação leve
 
 # Augmentações para treino - Dataset Pequeno (<20k)
 train_heavy_cnn:
@@ -18,14 +18,14 @@ train_heavy_cnn:
 
   rotation:
     enabled: true
-    limit: 5
-    probability: 0.4
+    limit: 10
+    probability: 0.5
 
   affine:
     enabled: true
-    scale: [0.95, 1.05]
-    translate_percent: [-0.05, 0.05]
-    probability: 0.3
+    scale: [0.90, 1.10]
+    translate_percent: [-0.08, 0.08]
+    probability: 0.4
 
   clahe:
     enabled: true
@@ -35,13 +35,13 @@ train_heavy_cnn:
 
   brightness_contrast:
     enabled: true
-    brightness_limit: 0.1
-    contrast_limit: 0.15
+    brightness_limit: 0.15
+    contrast_limit: 0.20
     probability: 0.6
 
   random_gamma:
     enabled: true
-    gamma_limit: [90, 110]
+    gamma_limit: [85, 115]
     probability: 0.5
 
   blur_sharpen:
@@ -53,6 +53,12 @@ train_heavy_cnn:
       lightness: [0.7, 1.0]
     probability: 0.3
 
+  gauss_noise:
+    enabled: true
+    std_range: [0.02, 0.08]
+    mean_range: [0.0, 0.0]
+    probability: 0.3
+
 train_heavy_transformer:
   resize:
     enabled: true
@@ -60,12 +66,12 @@ train_heavy_transformer:
 
   horizontal_flip:
     enabled: true
-    probability: 0.4
+    probability: 0.5
 
   rotation:
     enabled: true
-    limit: 3
-    probability: 0.3
+    limit: 8
+    probability: 0.4
 
   clahe:
     enabled: true
@@ -75,20 +81,26 @@ train_heavy_transformer:
 
   brightness_contrast:
     enabled: true
-    brightness_limit: 0.08
-    contrast_limit: 0.1
-    probability: 0.4
+    brightness_limit: 0.12
+    contrast_limit: 0.15
+    probability: 0.5
 
   affine:
     enabled: true
-    scale: [0.97, 1.03]
-    translate_percent: [-0.03, 0.03]
-    probability: 0.2
+    scale: [0.92, 1.08]
+    translate_percent: [-0.06, 0.06]
+    probability: 0.3
 
   random_gamma:
     enabled: true
-    gamma_limit: [95, 105]
-    probability: 0.3
+    gamma_limit: [90, 110]
+    probability: 0.4
+
+  gauss_noise:
+    enabled: true
+    std_range: [0.02, 0.06]
+    mean_range: [0.0, 0.0]
+    probability: 0.25
 
 # Augmentações para treino - Dataset Médio (<50k)
 train_moderate_cnn:
@@ -102,8 +114,8 @@ train_moderate_cnn:
 
   rotation:
     enabled: true
-    limit: 3
-    probability: 0.3
+    limit: 8
+    probability: 0.4
 
   clahe:
     enabled: true
@@ -113,19 +125,25 @@ train_moderate_cnn:
 
   brightness_contrast:
     enabled: true
-    brightness_limit: 0.08
-    contrast_limit: 0.1
-    probability: 0.4
+    brightness_limit: 0.12
+    contrast_limit: 0.15
+    probability: 0.5
 
   random_gamma:
     enabled: true
-    gamma_limit: [95, 105]
-    probability: 0.3
+    gamma_limit: [90, 110]
+    probability: 0.4
 
   gaussian_blur:
     enabled: true
     blur_limit: [1, 2]
-    probability: 0.1
+    probability: 0.15
+
+  gauss_noise:
+    enabled: true
+    std_range: [0.01, 0.05]
+    mean_range: [0.0, 0.0]
+    probability: 0.2
 
 train_moderate_transformer:
   resize:
@@ -138,8 +156,8 @@ train_moderate_transformer:
 
   rotation:
     enabled: true
-    limit: 3
-    probability: 0.25
+    limit: 5
+    probability: 0.3
 
   clahe:
     enabled: true
@@ -149,20 +167,26 @@ train_moderate_transformer:
 
   brightness_contrast:
     enabled: true
-    brightness_limit: 0.08
-    contrast_limit: 0.1
+    brightness_limit: 0.10
+    contrast_limit: 0.12
     probability: 0.4
 
   affine:
     enabled: true
-    scale: [0.98, 1.02]
-    translate_percent: [-0.02, 0.02]
-    probability: 0.15
+    scale: [0.95, 1.05]
+    translate_percent: [-0.04, 0.04]
+    probability: 0.2
 
   random_gamma:
     enabled: true
-    gamma_limit: [95, 105]
-    probability: 0.25
+    gamma_limit: [93, 107]
+    probability: 0.3
+
+  gauss_noise:
+    enabled: true
+    std_range: [0.01, 0.04]
+    mean_range: [0.0, 0.0]
+    probability: 0.2
 
 # Augmentações para treino - Dataset Grande (≥50k)
 train_light_cnn:
@@ -190,6 +214,12 @@ train_light_cnn:
     brightness_limit: 0.05
     contrast_limit: 0.05
     probability: 0.2
+
+  gauss_noise:
+    enabled: true
+    std_range: [0.01, 0.03]
+    mean_range: [0.0, 0.0]
+    probability: 0.15
 
 train_light_transformer:
   resize:
@@ -220,6 +250,12 @@ train_light_transformer:
   random_gamma:
     enabled: true
     gamma_limit: [97, 103]
+    probability: 0.15
+
+  gauss_noise:
+    enabled: true
+    std_range: [0.01, 0.02]
+    mean_range: [0.0, 0.0]
     probability: 0.15
 
 # Augmentações sintéticas para classes minoritárias - CNN
@@ -295,22 +331,6 @@ synthetic_transformer:
     std_range: [0.05, 0.15]
     mean_range: [0.0, 0.0]
     probability: 0.4
-
-# Configurações para validação e teste
-validation:
-  resize:
-    enabled: true
-    size: null  # Definido por MedicalImagePreprocessor
-
-test:
-  resize:
-    enabled: true
-    size: null  # Definido por MedicalImagePreprocessor
-
-# Normalização (definida por MedicalImagePreprocessor por arquitetura)
-normalization:
-  mean: null  # Definido por arquitetura
-  std: null   # Definido por arquitetura
 
 # Configurações de augmentação de classes minoritárias
 minority_augmentation:
