@@ -1,6 +1,10 @@
-# Configurações de Arquiteturas e Hiperparâmetros
+# ============================================================
+# CONFIGURAÇÕES DE ARQUITETURAS E HIPERPARÂMETROS
+# ============================================================
 
-# Arquiteturas suportadas
+# ------------------------------------------------------------
+# 1. ARQUITETURAS SUPORTADAS
+# ------------------------------------------------------------
 supported_architectures:
   cnn:
     - resnext50_32x4d
@@ -11,13 +15,17 @@ supported_architectures:
     - vit_b_16
     - swin_v2_tiny
 
-# Configurações de adaptação para grayscale
+# ------------------------------------------------------------
+# 2. ADAPTAÇÃO PARA IMAGEM MÉDICA (GRAYSCALE)
+# ------------------------------------------------------------
 grayscale_adaptation:
   enabled: true
   preserve_pretrained_weights: true
   expected_channels: 1
 
-# Configurações de modelo por arquitetura
+# ------------------------------------------------------------
+# 3. CONFIGURAÇÕES ESPECÍFICAS POR MODELO
+# ------------------------------------------------------------
 model_config:
   resnext50_32x4d:
     type: "cnn"
@@ -65,21 +73,24 @@ model_config:
     freeze_patch_embed: true
     freeze_backbone: true
 
-# Fine-tuning: backbone descongelado com LR diferencial
-# backbone_lr_ratio: fração do LR principal aplicada ao backbone
+# ------------------------------------------------------------
+# 4. CONFIGURAÇÕES DE FINE-TUNING
+# ------------------------------------------------------------
 fine_tuning:
   backbone_lr_ratio:
     cnn: 0.01
     transformer: 0.001
 
-# Grid de hiperparâmetros por tipo de arquitetura
+# ------------------------------------------------------------
+# 5. GRID DE HIPERPARÂMETROS PARA BUSCA ALEATÓRIA
+# ------------------------------------------------------------
 hyperparameter_grids:
   cnn:
     learning_rate: [1e-3, 5e-4, 1e-4, 5e-5]
     dropout: [0.4, 0.5, 0.6, 0.7]
     hidden_units: [128, 256, 512]
     optimizer: ["adamw"]
-    batch_size: [16, 32, 64]
+    batch_size: [16, 32]
     loss_function: ["crossentropy"]
 
   vit:
@@ -87,7 +98,7 @@ hyperparameter_grids:
     dropout: [0.2, 0.3, 0.4, 0.5]
     hidden_units: [128, 256, 512]
     optimizer: ["adamw"]
-    batch_size: [16, 32, 64]
+    batch_size: [8, 16]
     loss_function: ["crossentropy"]
 
   swin:
@@ -95,10 +106,12 @@ hyperparameter_grids:
     dropout: [0.2, 0.3, 0.4, 0.5]
     hidden_units: [128, 256, 512]
     optimizer: ["adamw"]
-    batch_size: [16, 32, 64]
+    batch_size: [8, 16]
     loss_function: ["crossentropy"]
 
-# Configurações de Loss Function
+# ------------------------------------------------------------
+# 6. FUNÇÃO DE PERDA E OTIMIZADOR
+# ------------------------------------------------------------
 loss_config:
   crossentropy:
     use_class_weights: true
@@ -106,32 +119,27 @@ loss_config:
       cnn: 0.15
       transformer: 0.15
 
-# Configurações de Optimizer
 optimizer_config:
   adam:
     weight_decay: 1e-4
-
   sgd:
     momentum: 0.9
     weight_decay: 1e-4
-
   adamw:
     weight_decay:
       cnn: 5e-2
       transformer: 0.05
 
-# Estratégia de busca de hiperparâmetros (Random Search)
+# ------------------------------------------------------------
+# 7. ESTRATÉGIA DE BUSCA (RANDOM SEARCH)
+# ------------------------------------------------------------
 search_strategy:
-  max_combinations: 60      # Regra de Bergstra & Bengio (~95% confiança para top 5%)
-  n_repetitions: 3          # Repetições para média estatística estável
+  max_combinations: 60
+  n_repetitions: 3
 
-hardware:
-  device: "cuda"
-  mixed_precision: true
-  num_workers: 2
-  pin_memory: true
-
-# Resultados
+# ------------------------------------------------------------
+# 8. RESULTADOS E SAÍDA
+# ------------------------------------------------------------
 results:
   save_path: "../../shared/logs"
   save_checkpoints: true

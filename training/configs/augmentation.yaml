@@ -1,358 +1,147 @@
-# Configurações de Data Augmentation
+# ============================================================
+# CONFIGURAÇÕES DE DATA AUGMENTATION
+# ============================================================
 
-# Configurações por número de SUJEITOS (pacientes) únicos
+# Limiares por número de SUJEITOS (pacientes) únicos
 dataset_size_thresholds:
   small: 200      # <200 sujeitos: augmentação pesada
   medium: 500     # <500 sujeitos: augmentação moderada
   large: 500      # ≥500 sujeitos: augmentação leve
 
-# Augmentações para treino - Dataset Pequeno (<20k)
-train_heavy_cnn:
-  resize:
+# ------------------------------------------------------------
+# PRESETS DE OPERAÇÕES (Âncoras YAML para evitar repetição)
+# ------------------------------------------------------------
+.anchors:
+  resize: &resize_base
     enabled: true
     size: null  # Definido por MedicalImagePreprocessor
 
-  horizontal_flip:
-    enabled: true
-    probability: 0.5
-
-  rotation:
-    enabled: true
-    limit: 10
-    probability: 0.5
-
-  affine:
-    enabled: true
-    scale: [0.90, 1.10]
-    translate_percent: [-0.08, 0.08]
-    probability: 0.4
-
-  clahe:
+  clahe_heavy: &clahe_heavy
     enabled: true
     clip_limit: 2.0
     tile_grid_size: [8, 8]
     probability: 0.7
 
-  brightness_contrast:
+  clahe_mod: &clahe_mod
+    <<: *clahe_heavy
+    clip_limit: 1.5
+    probability: 0.5
+
+  brightness_heavy: &brightness_heavy
     enabled: true
     brightness_limit: 0.15
     contrast_limit: 0.20
     probability: 0.6
 
-  random_gamma:
-    enabled: true
-    gamma_limit: [85, 115]
+  brightness_mod: &brightness_mod
+    <<: *brightness_heavy
+    brightness_limit: 0.12
+    contrast_limit: 0.15
     probability: 0.5
 
-  blur_sharpen:
-    enabled: true
-    gaussian_blur:
-      blur_limit: [1, 3]
-    sharpen:
-      alpha: [0.1, 0.3]
-      lightness: [0.7, 1.0]
-    probability: 0.3
-
-  gauss_noise:
+  gauss_noise_heavy: &noise_heavy
     enabled: true
     std_range: [0.02, 0.08]
     mean_range: [0.0, 0.0]
     probability: 0.3
 
-train_heavy_transformer:
-  resize:
-    enabled: true
-    size: null  # Definido por MedicalImagePreprocessor
-
-  horizontal_flip:
-    enabled: true
-    probability: 0.5
-
-  rotation:
-    enabled: true
-    limit: 8
-    probability: 0.4
-
-  clahe:
-    enabled: true
-    clip_limit: 1.5
-    tile_grid_size: [8, 8]
-    probability: 0.5
-
-  brightness_contrast:
-    enabled: true
-    brightness_limit: 0.12
-    contrast_limit: 0.15
-    probability: 0.5
-
-  affine:
-    enabled: true
-    scale: [0.92, 1.08]
-    translate_percent: [-0.06, 0.06]
-    probability: 0.3
-
-  random_gamma:
-    enabled: true
-    gamma_limit: [90, 110]
-    probability: 0.4
-
-  gauss_noise:
-    enabled: true
-    std_range: [0.02, 0.06]
-    mean_range: [0.0, 0.0]
-    probability: 0.25
-
-# Augmentações para treino - Dataset Médio (<50k)
-train_moderate_cnn:
-  resize:
-    enabled: true
-    size: null  # Definido por MedicalImagePreprocessor
-
-  horizontal_flip:
-    enabled: true
-    probability: 0.5
-
-  rotation:
-    enabled: true
-    limit: 8
-    probability: 0.4
-
-  clahe:
-    enabled: true
-    clip_limit: 1.5
-    tile_grid_size: [8, 8]
-    probability: 0.5
-
-  brightness_contrast:
-    enabled: true
-    brightness_limit: 0.12
-    contrast_limit: 0.15
-    probability: 0.5
-
-  random_gamma:
-    enabled: true
-    gamma_limit: [90, 110]
-    probability: 0.4
-
-  gaussian_blur:
-    enabled: true
-    blur_limit: [1, 2]
-    probability: 0.15
-
-  gauss_noise:
-    enabled: true
+  gauss_noise_mod: &noise_mod
+    <<: *noise_heavy
     std_range: [0.01, 0.05]
-    mean_range: [0.0, 0.0]
     probability: 0.2
+
+# ------------------------------------------------------------
+# 1. DATASET PEQUENO (<200 sujeitos) - HEAVY
+# ------------------------------------------------------------
+train_heavy_cnn:
+  resize: *resize_base
+  horizontal_flip: { enabled: true, probability: 0.5 }
+  rotation: { enabled: true, limit: 10, probability: 0.5 }
+  affine: { enabled: true, scale: [0.9, 1.1], translate_percent: [-0.08, 0.08], probability: 0.4 }
+  clahe: *clahe_heavy
+  brightness_contrast: *brightness_heavy
+  random_gamma: { enabled: true, gamma_limit: [85, 115], probability: 0.5 }
+  blur_sharpen: { enabled: true, gaussian_blur: {blur_limit: [1, 3]}, sharpen: {alpha: [0.1, 0.3], lightness: [0.7, 1.0]}, probability: 0.3 }
+  gauss_noise: *noise_heavy
+
+train_heavy_transformer:
+  resize: *resize_base
+  horizontal_flip: { enabled: true, probability: 0.5 }
+  rotation: { enabled: true, limit: 8, probability: 0.4 }
+  clahe: *clahe_mod
+  brightness_contrast: *brightness_mod
+  affine: { enabled: true, scale: [0.92, 1.08], translate_percent: [-0.06, 0.06], probability: 0.3 }
+  random_gamma: { enabled: true, gamma_limit: [90, 110], probability: 0.4 }
+  gauss_noise: { enabled: true, std_range: [0.02, 0.06], mean_range: [0.0, 0.0], probability: 0.25 }
+
+# ------------------------------------------------------------
+# 2. DATASET MÉDIO (<500 sujeitos) - MODERATE
+# ------------------------------------------------------------
+train_moderate_cnn:
+  resize: *resize_base
+  horizontal_flip: { enabled: true, probability: 0.5 }
+  rotation: { enabled: true, limit: 8, probability: 0.4 }
+  clahe: *clahe_mod
+  brightness_contrast: *brightness_mod
+  random_gamma: { enabled: true, gamma_limit: [90, 110], probability: 0.4 }
+  gaussian_blur: { enabled: true, blur_limit: [1, 2], probability: 0.15 }
+  gauss_noise: *noise_mod
 
 train_moderate_transformer:
-  resize:
-    enabled: true
-    size: null  # Definido por MedicalImagePreprocessor
+  resize: *resize_base
+  horizontal_flip: { enabled: true, probability: 0.4 }
+  rotation: { enabled: true, limit: 5, probability: 0.3 }
+  clahe: *clahe_mod
+  brightness_contrast: { enabled: true, brightness_limit: 0.1, contrast_limit: 0.12, probability: 0.4 }
+  affine: { enabled: true, scale: [0.95, 1.05], translate_percent: [-0.04, 0.04], probability: 0.2 }
+  random_gamma: { enabled: true, gamma_limit: [93, 107], probability: 0.3 }
+  gauss_noise: *noise_mod
 
-  horizontal_flip:
-    enabled: true
-    probability: 0.4
-
-  rotation:
-    enabled: true
-    limit: 5
-    probability: 0.3
-
-  clahe:
-    enabled: true
-    clip_limit: 1.5
-    tile_grid_size: [8, 8]
-    probability: 0.5
-
-  brightness_contrast:
-    enabled: true
-    brightness_limit: 0.10
-    contrast_limit: 0.12
-    probability: 0.4
-
-  affine:
-    enabled: true
-    scale: [0.95, 1.05]
-    translate_percent: [-0.04, 0.04]
-    probability: 0.2
-
-  random_gamma:
-    enabled: true
-    gamma_limit: [93, 107]
-    probability: 0.3
-
-  gauss_noise:
-    enabled: true
-    std_range: [0.01, 0.04]
-    mean_range: [0.0, 0.0]
-    probability: 0.2
-
-# Augmentações para treino - Dataset Grande (≥50k)
+# ------------------------------------------------------------
+# 3. DATASET GRANDE (≥500 sujeitos) - LIGHT
+# ------------------------------------------------------------
 train_light_cnn:
-  resize:
-    enabled: true
-    size: null  # Definido por MedicalImagePreprocessor
-
-  horizontal_flip:
-    enabled: true
-    probability: 0.3
-
-  rotation:
-    enabled: true
-    limit: 2
-    probability: 0.2
-
-  clahe:
-    enabled: true
-    clip_limit: 1.2
-    tile_grid_size: [8, 8]
-    probability: 0.3
-
-  brightness_contrast:
-    enabled: true
-    brightness_limit: 0.05
-    contrast_limit: 0.05
-    probability: 0.2
-
-  gauss_noise:
-    enabled: true
-    std_range: [0.01, 0.03]
-    mean_range: [0.0, 0.0]
-    probability: 0.15
+  resize: *resize_base
+  horizontal_flip: { enabled: true, probability: 0.3 }
+  rotation: { enabled: true, limit: 2, probability: 0.2 }
+  clahe: { enabled: true, clip_limit: 1.2, tile_grid_size: [8, 8], probability: 0.3 }
+  brightness_contrast: { enabled: true, brightness_limit: 0.05, contrast_limit: 0.05, probability: 0.2 }
+  gauss_noise: { enabled: true, std_range: [0.01, 0.03], mean_range: [0.0, 0.0], probability: 0.15 }
 
 train_light_transformer:
-  resize:
-    enabled: true
-    size: null  # Definido por MedicalImagePreprocessor
+  resize: *resize_base
+  horizontal_flip: { enabled: true, probability: 0.25 }
+  rotation: { enabled: true, limit: 2, probability: 0.15 }
+  clahe: { enabled: true, clip_limit: 1.2, tile_grid_size: [8, 8], probability: 0.3 }
+  brightness_contrast: { enabled: true, brightness_limit: 0.05, contrast_limit: 0.05, probability: 0.2 }
+  random_gamma: { enabled: true, gamma_limit: [97, 103], probability: 0.15 }
+  gauss_noise: { enabled: true, std_range: [0.01, 0.02], mean_range: [0.0, 0.0], probability: 0.15 }
 
-  horizontal_flip:
-    enabled: true
-    probability: 0.25
-
-  rotation:
-    enabled: true
-    limit: 2
-    probability: 0.15
-
-  clahe:
-    enabled: true
-    clip_limit: 1.2
-    tile_grid_size: [8, 8]
-    probability: 0.3
-
-  brightness_contrast:
-    enabled: true
-    brightness_limit: 0.05
-    contrast_limit: 0.05
-    probability: 0.2
-
-  random_gamma:
-    enabled: true
-    gamma_limit: [97, 103]
-    probability: 0.15
-
-  gauss_noise:
-    enabled: true
-    std_range: [0.01, 0.02]
-    mean_range: [0.0, 0.0]
-    probability: 0.15
-
-# Augmentações sintéticas para classes minoritárias - CNN
+# ------------------------------------------------------------
+# 4. AUGMENTAÇÕES SINTÉTICAS (PARA CLASSES MINORITÁRIAS)
+# ------------------------------------------------------------
 synthetic_cnn:
+  affine: { enabled: true, translate_percent: {x: [-0.05, 0.05], y: [-0.05, 0.05]}, scale: [0.9, 1.1], rotate: [-5, 5], probability: 0.6 }
+  elastic_transform: { enabled: true, alpha: 1, sigma: 20, probability: 0.3 }
+  random_tone_curve: { enabled: true, scale: 0.2, probability: 0.5 }
+  perspective: { enabled: true, scale: [0.05, 0.1], probability: 0.2 }
+  gauss_noise: { enabled: true, std_range: [0.05, 0.15], mean_range: [0.0, 0.0], probability: 0.4 }
 
-  affine:
-    enabled: true
-    translate_percent:
-      x: [-0.05, 0.05]
-      y: [-0.05, 0.05]
-    scale: [0.9, 1.1]
-    rotate: [-5, 5]
-    probability: 0.6
-
-  elastic_transform:
-    enabled: true
-    alpha: 1
-    sigma: 20
-    probability: 0.3
-
-  random_tone_curve:
-    enabled: true
-    scale: 0.2
-    probability: 0.5
-
-  perspective:
-    enabled: true
-    scale: [0.05, 0.1]
-    probability: 0.2
-
-  gauss_noise:
-    enabled: true
-    std_range: [0.05, 0.15]
-    mean_range: [0.0, 0.0]
-    probability: 0.4
-
-# Augmentações sintéticas para classes minoritárias - Transformer
 synthetic_transformer:
+  affine: { enabled: true, translate_percent: {x: [-0.05, 0.05], y: [-0.05, 0.05]}, scale: [0.92, 1.08], rotate: [-5, 5], probability: 0.5 }
+  elastic_transform: { enabled: true, alpha: 1, sigma: 20, probability: 0.3 }
+  perspective: { enabled: true, scale: [0.05, 0.08], probability: 0.2 }
+  grid_distortion: { enabled: true, num_steps: 5, distort_limit: 0.3, probability: 0.3 }
+  random_tone_curve: { enabled: true, scale: 0.15, probability: 0.4 }
+  gauss_noise: { enabled: true, std_range: [0.05, 0.15], mean_range: [0.0, 0.0], probability: 0.4 }
 
-  affine:
-    enabled: true
-    translate_percent:
-      x: [-0.05, 0.05]
-      y: [-0.05, 0.05]
-    scale: [0.92, 1.08]
-    rotate: [-5, 5]
-    probability: 0.5
-
-  elastic_transform:
-    enabled: true
-    alpha: 1
-    sigma: 20
-    probability: 0.3
-
-  perspective:
-    enabled: true
-    scale: [0.05, 0.08]
-    probability: 0.2
-
-  grid_distortion:
-    enabled: true
-    num_steps: 5
-    distort_limit: 0.3
-    probability: 0.3
-
-  random_tone_curve:
-    enabled: true
-    scale: 0.15
-    probability: 0.4
-
-  gauss_noise:
-    enabled: true
-    std_range: [0.05, 0.15]
-    mean_range: [0.0, 0.0]
-    probability: 0.4
-
-# Configurações de augmentação de classes minoritárias
+# ------------------------------------------------------------
+# 5. CONFIGURAÇÕES DE BALANCEAMENTO
+# ------------------------------------------------------------
 minority_augmentation:
-  strategies:
-    balance:
-      description: "Iguala quantidade da classe minoritária com a majoritária"
-    ratio:
-      description: "Define proporção entre minoritária e majoritária"
-      default_ratio: 0.6
-    proportional:
-      description: "Aumenta classe minoritária em 1.5x"
-      multiplier: 1.5
-    custom:
-      description: "Define a contagem do número de amostras da(s) classe(s) minoritária(s)"
-      targets:
-        0: 6000
-        1: 4000
-    percentage:
-      description: "Define uma porcentagem do dataset para a quantidade de amostras da(s) classe(s) minoritária(s)"
-      targets:
-        0: 0.40
-
+  strategies: [balance, ratio, proportional, custom, percentage]
+  default_ratio: 0.6
+  multiplier: 1.5
   random_seed:
     base: 42
-    per_class_offset: true  # Adiciona class_id ao seed base
+    per_class_offset: true

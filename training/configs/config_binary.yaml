@@ -1,19 +1,23 @@
-# Configurações para Modelo Binário: Non Demented vs Demented
+# ============================================================
+# CONFIGURAÇÕES PARA MODELO BINÁRIO (NON DEMENTED vs DEMENTED)
+# ============================================================
 
+# ------------------------------------------------------------
+# 1. CONFIGURAÇÕES DO MODELO
+# ------------------------------------------------------------
 model:
   name: "binary_classifier"
   num_classes: 2
-  class_names:
-    - "Demented"
-    - "Non Demented"
-
-  # Mapeamento de classes do dataset original
+  class_names: ["Demented", "Non Demented"]
   class_mapping:
-    "Non Demented": 1        # Non Demented -> classe 1
-    "Very mild Dementia": 0  # Very mild Dementia -> classe 0
-    "Mild Dementia": 0       # Mild Dementia -> classe 0
-    "Moderate Dementia": 0   # Moderate Dementia -> classe 0
+    "Non Demented": 1
+    "Very mild Dementia": 0
+    "Mild Dementia": 0
+    "Moderate Dementia": 0
 
+# ------------------------------------------------------------
+# 2. CONFIGURAÇÕES DE DADOS E DATASET
+# ------------------------------------------------------------
 data:
   dataset_type: "binary"
   data_path: "../shared/data/splits/binary"
@@ -24,46 +28,35 @@ data:
   stratify: true
   random_seed: 42
   max_slices_per_subject: 45
-
-  # Classes minoritárias para augmentação
   minority_classes: [0]
-
-  # Estratégia de balanceamento
+  
   minority_augmentation:
     enabled: true
     strategy: "ratio"
-    ratio:
-      default_ratio: 0.6
-    proportional:
-      multiplier: 1.5
-    custom:
-      targets:
-        0: 6000  # Mild: número absoluto de amostras
-    percentage:
-      targets:
-        0: 0.40  # Very Mild: 30% do dataset final
+    ratio: { default_ratio: 0.6 }
+    proportional: { multiplier: 1.5 }
+    custom: { targets: {0: 6000} }
+    percentage: { targets: {0: 0.40} }
 
+# ------------------------------------------------------------
+# 3. PARÂMETROS DE TREINAMENTO
+# ------------------------------------------------------------
 training:
   epochs: 150
-  patience: 25  # Early stopping
-
-  # Scheduler - Reduce on Plateau
+  patience: 25
   scheduler:
     type: "reduce_on_plateau"
-    params:
-      factor: 0.2
-      patience: 5
-      min_lr: 1e-7
+    params: { factor: 0.2, patience: 5, min_lr: 1e-7 }
 
+# ------------------------------------------------------------
+# 4. MÉTRICAS E VALIDAÇÃO
+# ------------------------------------------------------------
 validation:
-  metrics:
-    - "accuracy"
-    - "precision"
-    - "recall"
-    - "f1_score"
-    - "confusion_matrix"
-    - "roc_auc"
+  metrics: ["accuracy", "precision", "recall", "f1_score", "confusion_matrix", "roc_auc"]
 
+# ------------------------------------------------------------
+# 5. SALVAMENTO E LOGS
+# ------------------------------------------------------------
 checkpoint:
   save_path: "../../shared/models/binary"
   monitor: "val_f1_score"
@@ -73,4 +66,4 @@ logging:
     enabled: true
     project: "alzheimer-binary"
     entity: "samuel89-ufc-ai"
-    run_name: null  # Auto-gerado se null
+    run_name: null
