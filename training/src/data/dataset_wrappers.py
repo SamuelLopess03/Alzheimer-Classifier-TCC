@@ -1,12 +1,15 @@
+import os
 import torch
 import numpy as np
 from torch.utils.data import Dataset, Subset
+from sklearn.model_selection import StratifiedShuffleSplit
 from typing import List, Optional, Dict
-from collections import Counter
+from collections import Counter, defaultdict
 
 from .preprocessing import prepare_image_for_augmentation
 from .augmentation import get_alzheimer_grayscale_augmentation, create_synthetic_augmentation_for_minority
-from ..utils import load_augmentation_config, count_unique_subjects, resolve_subset_labels
+from .subject_utils import extract_subject_id, extract_slice_index, count_unique_subjects, resolve_subset_labels
+from ..utils import load_augmentation_config
 
 class DynamicAugmentationDataset(Dataset):
     def __init__(self, subset_dataset: Subset, architecture_name: str):
@@ -235,3 +238,141 @@ def _print_augmentation_summary(class_counts, targets, total):
         count = targets.get(cl, class_counts[cl])
         print(f"   Classe {cl}: {count} ({100*count/total:.1f}%)")
     print(f"{'-' * 60}\n")
+
+class SubjectSamplingSubset(Subset):
+    def __init__(
+        self,
+        dataset,
+        subject_indices: Dict[str, List[int]],
+        max_slices: Optional[int],
+        random_state: int = 42,
+        strategy: str = 'random'
+    ):
+        self.subject_indices = subject_indices
+        self.max_slices = max_slices
+        self.strategy = strategy
+        self.rng = np.random.default_rng(random_state)
+        super().__init__(dataset, [])
+        self.resample()
+
+    def resample(self):
+        new_indices = []
+
+        for sid, indices in self.subject_indices.items():
+            if self.max_slices is not None and len(indices) > self.max_slices:
+                if self.strategy == 'random':
+                    sampled = self.rng.choice(indices, size=self.max_slices, replace=False)
+                    new_indices.extend(sampled.tolist())
+                elif self.strategy == 'middle':
+                    sampled = self._select_middle_slices(indices, self.max_slices)
+                    new_indices.extend(sampled)
+            else:
+                new_indices.extend(indices)
+                
+        self.indices = sorted(new_indices)
+
+    def _select_middle_slices(self, indices: List[int], max_n: int) -> List[int]:
+        if max_n is None or len(indices) <= max_n:
+            return indices
+
+        indexed = []
+        for idx in indices:
+            path, _ = self.dataset.samples[idx]
+            slice_idx = extract_slice_index(os.path.basename(path))
+            indexed.append((slice_idx, idx))
+
+        indexed.sort()
+        mid = len(indexed) // 2
+        half = max_n // 2
+        start = max(0, mid - half)
+        end = min(len(indexed), start + max_n)
+        start = max(0, end - max_n)
+
+        return [item[1] for item in indexed[start:end]]
+
+def _group_samples_by_subject(dataset) -> dict:
+    subjects = defaultdict(lambda: {"indices": [], "label": None})
+    for idx, (path, label) in enumerate(dataset.samples):
+        subject_id = extract_subject_id(os.path.basename(path))
+        subjects[subject_id]["indices"].append(idx)
+        subjects[subject_id]["label"] = label
+    return subjects
+
+def _print_holdout_report(dataset, subjects, train_dataset, val_dataset, train_subject_ids, val_subject_ids):
+    train_labels_list = [dataset.samples[i][1] for i in train_dataset.indices]
+    val_labels_list   = [dataset.samples[i][1] for i in val_dataset.indices]
+    train_counts = Counter(train_labels_list)
+    val_counts   = Counter(val_labels_list)
+    train_subj_per_class = Counter([subjects[s]["label"] for s in train_subject_ids])
+    val_subj_per_class   = Counter([subjects[s]["label"] for s in val_subject_ids])
+
+    print("Distribuição por Classe:")
+    print("\n  TREINO:")
+    total_train = sum(train_counts.values())
+    for cls in sorted(train_counts.keys()):
+        count = train_counts[cls]
+        print(f"    Classe {cls}: {count:>5} fatias, {train_subj_per_class.get(cls, 0):>3} sujeitos ({count/total_train*100:>5.1f}%)")
+    print(f"    Total:     {total_train:>5} fatias, {len(train_subject_ids):>3} sujeitos")
+
+    print("\n  VALIDAÇÃO:")
+    total_val = sum(val_counts.values())
+    for cls in sorted(val_counts.keys()):
+        count = val_counts[cls]
+        print(f"    Classe {cls}: {count:>5} fatias, {val_subj_per_class.get(cls, 0):>3} sujeitos ({count/total_val*100:>5.1f}%)")
+    print(f"    Total:     {total_val:>5} fatias, {len(val_subject_ids):>3} sujeitos")
+
+    overlap = set(train_subject_ids) & set(val_subject_ids)
+    if overlap:
+        print(f"\n  ERRO CRÍTICO: {len(overlap)} sujeitos em ambos os splits!")
+    else:
+        print("\n  Zero vazamento entre treino e validação")
+
+def create_stratified_holdout_split(
+        dataset,
+        train_ratio: float = 0.7,
+        val_ratio: float = 0.3,
+        random_state: int = 42,
+        max_slices_per_subject: Optional[int] = None
+) -> tuple:
+    print(f"{'-' * 60}")
+    print("CRIANDO HOLDOUT SPLIT POR SUJEITO (DINÂMICO)")
+    print(f"{'-' * 60}\n")
+    print(f"Configuração:")
+    print(f"  Train Ratio: {train_ratio:.1%}")
+    print(f"  Val Ratio:   {val_ratio:.1%}")
+    print(f"  Random State: {random_state}")
+    if max_slices_per_subject:
+        print(f"  Max Slices/Subject: {max_slices_per_subject}\n")
+
+    total_ratio = train_ratio + val_ratio
+    if abs(total_ratio - 1.0) > 1e-6:
+        raise ValueError(f"train_ratio + val_ratio devem somar 1.0, mas somam {total_ratio:.4f}")
+
+    subjects = _group_samples_by_subject(dataset)
+    subject_ids = list(subjects.keys())
+    subject_labels = [subjects[s]["label"] for s in subject_ids]
+    print(f"Dataset total: {len(dataset)} fatias de {len(subject_ids)} sujeitos\n")
+
+    splitter = StratifiedShuffleSplit(n_splits=1, test_size=val_ratio, random_state=random_state)
+    train_subj_idx, val_subj_idx = next(splitter.split(subject_ids, subject_labels))
+    train_subject_ids = [subject_ids[i] for i in train_subj_idx]
+    val_subject_ids   = [subject_ids[i] for i in val_subj_idx]
+
+    train_dataset = SubjectSamplingSubset(
+        dataset=dataset,
+        subject_indices={sid: subjects[sid]["indices"] for sid in train_subject_ids},
+        max_slices=max_slices_per_subject,
+        random_state=random_state,
+        strategy='random'
+    )
+    val_dataset = SubjectSamplingSubset(
+        dataset=dataset,
+        subject_indices={sid: subjects[sid]["indices"] for sid in val_subject_ids},
+        max_slices=max_slices_per_subject,
+        random_state=random_state,
+        strategy='middle'
+    )
+
+    _print_holdout_report(dataset, subjects, train_dataset, val_dataset, train_subject_ids, val_subject_ids)
+    print(f"\n{'-' * 60}\n")
+    return train_dataset, val_dataset

@@ -4,6 +4,8 @@ from albumentations.pytorch import ToTensorV2
 from .preprocessing import MedicalImagePreprocessor
 from ..utils import load_augmentation_config
 
+_TRANSFORMER_ARCHS = {'vit_b_16', 'swin_v2_tiny'}
+
 def get_alzheimer_grayscale_augmentation(
         architecture_name: str,
         dataset_size: int,
@@ -12,7 +14,7 @@ def get_alzheimer_grayscale_augmentation(
     preprocessor = MedicalImagePreprocessor(architecture_name)
     config = preprocessor.config
     aug_config = load_augmentation_config()
-    is_transformer = architecture_name.lower() in ['vit_b_16', 'swin_v2_tiny']
+    is_transformer = architecture_name.lower() in _TRANSFORMER_ARCHS
 
     if not is_training:
         return alb.Compose([
@@ -44,7 +46,7 @@ def create_synthetic_augmentation_for_minority(architecture_name: str) -> alb.Co
     preprocessor = MedicalImagePreprocessor(architecture_name)
     config = preprocessor.config
     aug_config = load_augmentation_config()
-    is_transformer = architecture_name.lower() in ['vit_b_16', 'swin_v2_tiny']
+    is_transformer = architecture_name.lower() in _TRANSFORMER_ARCHS
 
     family = "transformer" if is_transformer else "cnn"
     cfg = aug_config[f'synthetic_{family}']
@@ -103,6 +105,58 @@ def _gauss_noise(cfg: dict) -> alb.GaussNoise:
         p=c['probability']
     )
 
+def _motion_blur(cfg: dict) -> alb.MotionBlur:
+    c = cfg['motion_blur']
+    return alb.MotionBlur(
+        blur_limit=int(c['blur_limit']),
+        p=c['probability']
+    )
+    
+def _mult_noise(cfg: dict) -> alb.MultiplicativeNoise:
+    c = cfg['multiplicative_noise']
+    return alb.MultiplicativeNoise(
+        multiplier=(float(c['multiplier'][0]), float(c['multiplier'][1])),
+        per_channel=bool(c['per_channel']),
+        p=c['probability']
+    )
+
+def _gaussian_blur(cfg: dict) -> alb.GaussianBlur:
+    c = cfg['gaussian_blur']
+    return alb.GaussianBlur(
+        blur_limit=(int(c['blur_limit'][0]), int(c['blur_limit'][1])),
+        p=c['probability']
+    )
+
+def _elastic_transform(cfg: dict) -> alb.ElasticTransform:
+    c = cfg['elastic_transform']
+    return alb.ElasticTransform(
+        alpha=c['alpha'],
+        sigma=c['sigma'],
+        p=c['probability']
+    )
+
+def _perspective(cfg: dict) -> alb.Perspective:
+    c = cfg['perspective']
+    return alb.Perspective(
+        scale=(float(c['scale'][0]), float(c['scale'][1])),
+        p=c['probability']
+    )
+
+def _grid_distortion(cfg: dict) -> alb.GridDistortion:
+    c = cfg['grid_distortion']
+    return alb.GridDistortion(
+        num_steps=int(c['num_steps']),
+        distort_limit=float(c['distort_limit']),
+        p=float(c['probability'])
+    )
+
+def _random_tone_curve(cfg: dict) -> alb.RandomToneCurve:
+    c = cfg['random_tone_curve']
+    return alb.RandomToneCurve(
+        scale=c['scale'],
+        p=c['probability']
+    )
+
 def _blur_sharpen_oneof(cfg: dict) -> alb.OneOf:
     bs = cfg['blur_sharpen']
     return alb.OneOf([
@@ -149,10 +203,7 @@ def _cnn_moderate(config, cfg):
         _clahe(cfg),
         _brightness_contrast(cfg),
         _gamma(cfg),
-        alb.GaussianBlur(
-            blur_limit=(int(cfg['gaussian_blur']['blur_limit'][0]), int(cfg['gaussian_blur']['blur_limit'][1])),
-            p=cfg['gaussian_blur']['probability']
-        ),
+        _gaussian_blur(cfg),
         _gauss_noise(cfg),
         *_resize_normalize(config)[1:]
     ]
@@ -205,24 +256,24 @@ def _transformer_light(config, cfg):
 def _cnn_synthetic(config, cfg):
     return [
         _affine_synthetic(cfg),
-        alb.ElasticTransform(alpha=cfg['elastic_transform']['alpha'], sigma=cfg['elastic_transform']['sigma'], p=cfg['elastic_transform']['probability']),
-        alb.Perspective(scale=(float(cfg['perspective']['scale'][0]), float(cfg['perspective']['scale'][1])), p=cfg['perspective']['probability']),
-        alb.RandomToneCurve(scale=cfg['random_tone_curve']['scale'], p=cfg['random_tone_curve']['probability']),
-        alb.MotionBlur(blur_limit=5, p=0.15),
+        _elastic_transform(cfg),
+        _perspective(cfg),
+        _random_tone_curve(cfg),
+        _motion_blur(cfg),
         _gauss_noise(cfg),
-        alb.MultiplicativeNoise(multiplier=(0.9, 1.1), per_channel=False, p=0.2),
+        _mult_noise(cfg),
         *_resize_normalize(config)
     ]
 
 def _transformer_synthetic(config, cfg):
     return [
         _affine_synthetic(cfg),
-        alb.ElasticTransform(alpha=cfg['elastic_transform']['alpha'], sigma=cfg['elastic_transform']['sigma'], p=cfg['elastic_transform']['probability']),
-        alb.Perspective(scale=(float(cfg['perspective']['scale'][0]), float(cfg['perspective']['scale'][1])), p=cfg['perspective']['probability']),
-        alb.GridDistortion(num_steps=int(cfg['grid_distortion']['num_steps']), distort_limit=float(cfg['grid_distortion']['distort_limit']), p=float(cfg['grid_distortion']['probability'])),
-        alb.RandomToneCurve(scale=cfg['random_tone_curve']['scale'], p=cfg['random_tone_curve']['probability']),
+        _elastic_transform(cfg),
+        _perspective(cfg),
+        _grid_distortion(cfg),
+        _random_tone_curve(cfg),
         _gauss_noise(cfg),
-        alb.MultiplicativeNoise(multiplier=(0.9, 1.1), per_channel=False, p=0.2),
+        _mult_noise(cfg),
         *_resize_normalize(config)
     ]
 
