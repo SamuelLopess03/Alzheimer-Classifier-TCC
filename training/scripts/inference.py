@@ -1,326 +1,16 @@
 import os
-import json
 import argparse
+import sys
 from pathlib import Path
-from typing import Dict, Optional, Tuple
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torchvision import datasets as tv_datasets
 
-from src.models import create_model_with_architecture
-from src.training import train_final_model, evaluate_model, get_training_config
-from src.utils import load_hyperparameters_config, create_stratified_holdout_split
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-DEFAULT_EXPERIMENTS_PATH = os.path.join(os.path.dirname(__file__), '..', 'shared/logs/experiments')
-DEFAULT_DATA_PATH = os.path.join(os.path.dirname(__file__), '..', 'shared/data')
-DEFAULT_MODELS_PATH = os.path.join(os.path.dirname(__file__), '..', 'shared/models')
+from src.evaluation import run_full_inference_pipeline
 
-EXECUTION_STATE_FILE = 'execution_state.json'
-
-def find_best_experiment(experiments_path: str, model_type: str) -> Optional[Dict]:
-    experiments_dir = Path(experiments_path)
-
-    if not experiments_dir.exists():
-        print(f"Diretório de experimentos não encontrado: {experiments_path}\n")
-        return None
-
-    best_experiment = None
-    best_score_final = -1.0
-
-    pattern = f"*_{model_type}"
-
-    print(f"\n{'-' * 60}")
-    print(f"BUSCANDO MELHOR EXPERIMENTO ({model_type.upper()})")
-    print(f"{'-' * 60}\n")
-    print(f"Vasculhando: {experiments_dir}\n")
-
-    matching_dirs = list(experiments_dir.glob(pattern))
-
-    if not matching_dirs:
-        print(f"Nenhum experimento encontrado para o modelo '{model_type}'\n")
-        return None
-
-    print(f"Encontrados {len(matching_dirs)} experimentos do tipo '{model_type}':\n")
-
-    for exp_dir in matching_dirs:
-        state_file = exp_dir / EXECUTION_STATE_FILE
-
-        if not state_file.exists():
-            print(f"Pulando {exp_dir.name}: {EXECUTION_STATE_FILE} não encontrado\n")
-            continue
-
-        try:
-            with open(state_file, 'r') as f:
-                state = json.load(f)
-
-            results = state.get('results', {})
-
-            if not results:
-                print(f"Pulando {exp_dir.name}: sem resultados\n")
-                continue
-
-            best_score = results.get('best_score', -1.0)
-            architecture_name = exp_dir.name.replace(f"_{model_type}", "")
-
-            print(f"{architecture_name:35s} | Best Score: {best_score:.4f}\n")
-
-            if best_score > best_score_final:
-                best_score_final = best_score
-                best_experiment = {
-                    'architecture_name': architecture_name,
-                    'experiment_dir': str(exp_dir),
-                    'state_file': str(state_file),
-                    'best_score': best_score,
-                    'results': results,
-                    'executed_indices': state.get('executed_indices', []),
-                    'model_type': model_type
-                }
-
-        except Exception as e:
-            print(f"Erro ao processar {exp_dir.name}: {str(e)}\n")
-            continue
-
-    if best_experiment:
-        print(f"\n{'-' * 60}")
-        print(f"MELHOR EXPERIMENTO ENCONTRADO:")
-        print(f"{'-' * 60}")
-        print(f"   Arquitetura: {best_experiment['architecture_name']}")
-        print(f"   Best Score: {best_experiment['best_score']:.4f}")
-        print(f"   Caminho: {best_experiment['experiment_dir']}")
-        print(f"{'-' * 60}\n")
-    else:
-        print(f"\nNenhum experimento válido encontrado para '{model_type}'\n")
-
-    return best_experiment
-
-def extract_best_hyperparameters(experiment: Dict) -> Dict:
-    results = experiment['results']
-
-    hyperparameters = results.get('best_params', {})
-
-    hyperparameters['architecture_name'] = experiment['architecture_name']
-    hyperparameters['model_type'] = experiment['model_type']
-    hyperparameters['best_score'] = experiment['best_score']
-
-    return hyperparameters
-
-def setup_device(hyperparams_config: Dict) -> torch.device:
-    hardware_config = hyperparams_config.get('hardware', {})
-    device_config = hardware_config.get('device', 'cuda')
-
-    if device_config == 'auto':
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    else:
-        device = torch.device(device_config)
-
-    print(f"Dispositivo: {device}\n")
-
-    if torch.cuda.is_available():
-        print(f"GPU: {torch.cuda.get_device_name(0)}")
-        print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB\n")
-    else:
-        print("CUDA não disponível. Usando CPU.\n")
-
-    return device
-
-def load_datasets(data_path: str, model_type: str) -> Tuple[tv_datasets.ImageFolder, tv_datasets.ImageFolder]:
-    train_path = os.path.join(data_path, f'splits/{model_type}/train')
-    test_path = os.path.join(data_path, f'splits/{model_type}/test')
-
-    if not os.path.exists(train_path):
-        raise FileNotFoundError(f"Caminho de treino não encontrado: {train_path}\n")
-
-    if not os.path.exists(test_path):
-        raise FileNotFoundError(f"Caminho de teste não encontrado: {test_path}\n")
-
-    print(f"Carregando datasets...")
-    train_dataset = tv_datasets.ImageFolder(root=train_path, transform=None)
-    test_dataset = tv_datasets.ImageFolder(root=test_path, transform=None)
-
-    print(f"Train dataset: {len(train_dataset)} amostras")
-    print(f"Test dataset: {len(test_dataset)} amostras\n")
-
-    return train_dataset, test_dataset
-
-def setup_model_criterion_and_optimizer(
-        hyperparameters: Dict,
-        device: torch.device,
-        train_dataset: torch.utils.data.Dataset,
-        is_multiclass: bool
-) -> Tuple[nn.Module, nn.Module, optim.Optimizer]:
-    config = get_training_config(is_multiclass)
-    class_names = config['model']['class_names']
-
-    print("Criando modelo, critério e otimizador...\n")
-
-    model, criterion, optimizer = create_model_with_architecture(
-        hyperparams=hyperparameters,
-        architecture_name=hyperparameters['architecture_name'],
-        class_names=class_names,
-        device=device,
-        train_dataset=train_dataset
-    )
-
-    print(f"Modelo: {hyperparameters['architecture_name']}")
-    print(f"Critério: {criterion.__class__.__name__}")
-    print(f"Otimizador: {optimizer.__class__.__name__}\n")
-
-    return model, criterion, optimizer
-
-def create_train_val_splits(
-        train_dataset: torch.utils.data.Dataset,
-        is_multiclass: bool
-) -> Tuple[torch.utils.data.Subset, torch.utils.data.Subset]:
-    config = get_training_config(is_multiclass)
-    data_config = config['data']
-
-    train_ratio = data_config['split_ratios']['train']
-    val_ratio = data_config['split_ratios']['train_val']
-    random_seed = data_config['random_seed']
-
-    print("Criando splits estratificados...\n")
-
-    train_split, val_split = create_stratified_holdout_split(
-        train_dataset,
-        train_ratio,
-        val_ratio,
-        random_state=random_seed
-    )
-
-    print(f"Train split: {len(train_split)} amostras")
-    print(f"Val split: {len(val_split)} amostras\n")
-
-    return train_split, val_split
-
-def save_final_results(
-        training_results: Dict,
-        evaluation_results: Dict,
-        best_experiment: Dict,
-        hyperparameters: Dict,
-        models_path: str
-) -> Path:
-    final_results = {
-        'best_experiment': best_experiment,
-        'hyperparameters': hyperparameters,
-        'training_results': {
-            'best_epoch': training_results['best_epoch'],
-            'best_val_f1': training_results['best_val_f1'],
-        },
-        'evaluation_results': {
-            'test_metrics': evaluation_results['test_metrics'],
-        },
-        'checkpoint_path': training_results['checkpoint_path'],
-        'gradcam_path': evaluation_results.get('gradcam_path')
-    }
-
-    output_dir = Path(models_path)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    results_file = output_dir / f"final_training_results.json"
-
-    with open(results_file, 'w') as f:
-        json.dump(final_results, f, indent=2, default=str)
-
-    return results_file
-
-def print_hyperparameters(hyperparameters: Dict):
-    print("\nHIPERPARÂMETROS SELECIONADOS:")
-    print("-" * 60)
-    for key, value in sorted(hyperparameters.items()):
-        print(f"   {key:30s}: {value}")
-    print("-" * 60 + "\n")
-
-def inference(args: argparse.Namespace):
-    print(f"\n{'=' * 80}")
-    print("PIPELINE: TREINAMENTO FINAL + AVALIAÇÃO")
-    print(f"{'=' * 80}\n")
-
-    hyperparams_config = load_hyperparameters_config()
-
-    device = setup_device(hyperparams_config)
-
-    model_type = getattr(args, 'model_type', 'binary')
-    experiments_path = getattr(args, 'experiments_path', DEFAULT_EXPERIMENTS_PATH)
-    data_path = getattr(args, 'data_path', DEFAULT_DATA_PATH)
-    generate_gradcam = getattr(args, 'generate_gradcam', False)
-    gradcam_samples = getattr(args, 'gradcam_samples', 10)
-
-    is_multiclass = (model_type == 'multiclass')
-
-    best_experiment = find_best_experiment(
-        experiments_path,
-        model_type
-    )
-
-    if best_experiment is None:
-        print("Nenhum experimento encontrado. Encerrando.\n")
-        return
-
-    hyperparameters = extract_best_hyperparameters(best_experiment)
-    print_hyperparameters(hyperparameters)
-
-    try:
-        train_dataset, test_dataset = load_datasets(
-            data_path,
-            model_type
-        )
-    except FileNotFoundError as excep:
-        print(str(excep))
-        return
-
-    model, criterion, optimizer = setup_model_criterion_and_optimizer(
-        hyperparameters=hyperparameters,
-        device=device,
-        train_dataset=train_dataset,
-        is_multiclass=is_multiclass
-    )
-
-    train_split, val_split = create_train_val_splits(
-        train_dataset=train_dataset,
-        is_multiclass=is_multiclass
-    )
-
-    training_results = train_final_model(
-        model=model,
-        criterion=criterion,
-        optimizer=optimizer,
-        train_split=train_split,
-        val_split=val_split,
-        hyperparameters=hyperparameters,
-        device=device,
-        is_multiclass=is_multiclass,
-        use_gradient_clipping=hyperparameters.get('use_gradient_clipping', True),
-        max_grad_norm=hyperparameters.get('max_grad_norm', 1.0),
-    )
-
-    evaluation_results = evaluate_model(
-        model=model,
-        criterion=criterion,
-        optimizer=optimizer,
-        test_dataset=test_dataset,
-        training_results=training_results,
-        hyperparameters=hyperparameters,
-        device=device,
-        generate_gradcam=generate_gradcam,
-        gradcam_samples=gradcam_samples
-    )
-
-    results_file = save_final_results(
-        training_results=training_results,
-        evaluation_results=evaluation_results,
-        best_experiment=best_experiment,
-        hyperparameters=hyperparameters,
-        models_path=os.path.join(DEFAULT_MODELS_PATH, model_type)
-    )
-
-    print(f"\nResultados finais salvos em: {results_file}")
-
-    print(f"\n{'=' * 80}")
-    print("PIPELINE CONCLUÍDA COM SUCESSO!")
-    print(f"  Fase 2 (Treinamento): Melhor F1 = {training_results['best_val_f1'] * 100:.2f}%")
-    print(f"  Fase 3 (Avaliação): Test F1 = {evaluation_results['test_metrics']['f1_score'] * 100:.2f}%")
-    print(f"{'=' * 80}\n")
+BASE_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_EXPERIMENTS_PATH = str(BASE_DIR / 'shared/logs/experiments')
+DEFAULT_DATA_PATH = str(BASE_DIR / 'shared/data')
+DEFAULT_MODELS_PATH = str(BASE_DIR / 'shared/models')
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -329,13 +19,13 @@ def parse_arguments() -> argparse.Namespace:
         epilog="""
                 Exemplos de uso:
                   # Treinamento + avaliação binário com Grad-CAM
-                  python inference.py --model_type binary --generate_gradcam
+                  python scripts/inference.py --model_type binary --generate_gradcam
                 
-                  # Treinamento + avaliação multiclasse com 15 amostras Grad-CAM
-                  python inference.py --model_type multiclass --generate_gradcam --gradcam_samples 15
+                # Treinamento + avaliação multiclasse com 15 amostras Grad-CAM
+                  python scripts/inference.py --model_type multiclass --generate_gradcam --gradcam_samples 15
                 
-                  # Com caminhos personalizados
-                  python inference.py --model_type binary --experiments_path /custom/path --data_path /data/path
+                # Com caminhos personalizados
+                  python scripts/inference.py --model_type binary --experiments_path /custom/path
                """
     )
 
@@ -362,10 +52,10 @@ def parse_arguments() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        '--num_workers',
-        type=int,
-        default=4,
-        help="Número de workers para DataLoader (padrão: 4)"
+        '--models_path',
+        type=str,
+        default=DEFAULT_MODELS_PATH,
+        help=f"Caminho para salvar modelos finais (padrão: {DEFAULT_MODELS_PATH})"
     )
 
     parser.add_argument(
@@ -381,16 +71,26 @@ def parse_arguments() -> argparse.Namespace:
         help="Número de amostras Grad-CAM (padrão: 10)"
     )
 
-    args, _ = parser.parse_known_args()
-    return args
+    return parser.parse_args()
 
-if __name__ == "__main__":
+def main():
     args = parse_arguments()
 
     try:
-        inference(args)
+        run_full_inference_pipeline(
+            model_type=args.model_type,
+            experiments_path=args.experiments_path,
+            data_path=args.data_path,
+            models_path=args.models_path,
+            generate_gradcam=args.generate_gradcam,
+            gradcam_samples=args.gradcam_samples
+        )
     except KeyboardInterrupt:
         print("\n\nExecução interrompida pelo usuário.\n")
+        sys.exit(130)
     except Exception as e:
-        print(f"\n\nErro durante execução: {str(e)}\n")
-        raise
+        print(f"\n\nErro crítico durante execução: {str(e)}\n")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
