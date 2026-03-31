@@ -68,7 +68,7 @@ def count_unique_subjects(dataset: Any, indices=None) -> int:
                 subjects.add(extract_subject_id(os.path.basename(path)))
             except Exception:
                 continue
-
+    
     return len(subjects) if subjects else 0
 
 def resolve_subset_labels(split: Any) -> np.ndarray:
@@ -79,3 +79,20 @@ def resolve_subset_labels(split: Any) -> np.ndarray:
     else:
         all_labels = np.array([split.dataset[i][1] for i in range(len(split.dataset))])
     return all_labels[split.indices]
+
+def get_subject_ids_from_dataset(dataset: Any) -> List[str]:
+    base_ds, resolved_indices = resolve_dataset_chain(dataset)
+    
+    subject_ids = []
+    
+    if hasattr(base_ds, 'samples'):
+        targets = (
+            (base_ds.samples[i][0] for i in resolved_indices)
+            if resolved_indices is not None
+            else (p for p, _ in base_ds.samples)
+        )
+        
+        for path in targets:
+            subject_ids.append(extract_subject_id(os.path.basename(path)))
+            
+    return subject_ids

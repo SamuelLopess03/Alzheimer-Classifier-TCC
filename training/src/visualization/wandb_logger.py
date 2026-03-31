@@ -1,10 +1,38 @@
 import wandb
 import os
 import numpy as np
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Any
 from dotenv import load_dotenv
+import torch
+import torch.nn as nn
 
 from ..evaluation import aggregate_repetition_metrics
+
+def log_performance_metrics(
+        metrics: Dict,
+        repetition_number: int,
+        epoch_number: int,
+        class_names: List[str]
+):
+    if wandb.run is None:
+        return
+
+    wandb_log = {
+        f"rep_{repetition_number}/epoch": epoch_number,
+        f"rep_{repetition_number}/f1_subj": metrics.get('f1_score', 0.0),
+        f"rep_{repetition_number}/acc_subj": metrics.get('accuracy', 0.0),
+        f"rep_{repetition_number}/mcc_subj": metrics.get('matthews_correlation_coefficient', 0.0),
+        f"rep_{repetition_number}/kappa_subj": metrics.get('cohen_kappa', 0.0),
+        f"rep_{repetition_number}/loss": metrics.get('val_loss', 0.0),
+    }
+
+    if 'f1_per_class' in metrics:
+        f1_list = metrics['f1_per_class']
+        for i, name in enumerate(class_names):
+            if i < len(f1_list):
+                wandb_log[f"rep_{repetition_number}/f1_{name}"] = f1_list[i]
+
+    wandb.log(wandb_log)
 
 def init_wandb_run(
         project_name: str,
@@ -68,6 +96,53 @@ def init_wandb_run(
         print(f"\nErro ao inicializar WandB run: {e}")
         print("Continuando sem logging do WandB...\n")
         return None
+
+def initialize_wandb_tracking(training_results: Dict, hyperparameters: dict,
+                              optimizer: torch.optim.Optimizer,
+                              criterion: nn.Module,
+                              use_gradient_clipping: bool,
+                              max_grad_norm: float) -> Tuple[bool, Optional[object]]:
+    if not training_results.get('wandb_enabled', False):
+        return False, None
+
+    config = training_results.get('config', {})
+    architecture_name = hyperparameters['architecture_name']
+    model_type = training_results.get('model_type', 'Binário')
+    class_names = training_results.get('class_names', [])
+    save_path = training_results.get('save_path', '.')
+
+    logging_config = config.get('logging', {}).get('wandb', {})
+    wandb_project = logging_config.get('project', 'final_training')
+    wandb_entity = logging_config.get('entity', None)
+
+    run_name = f"{architecture_name}_evaluation_{model_type.lower()}"
+    wandb_dir = os.path.join(save_path, 'wandb_logs')
+
+    run = init_wandb_run(
+        project_name=wandb_project,
+        run_name=run_name,
+        config={
+            "model_type": model_type,
+            "num_classes": len(class_names),
+            "class_names": class_names,
+            "optimizer": optimizer.__class__.__name__,
+            "criterion": criterion.__class__.__name__,
+            "use_gradient_clipping": use_gradient_clipping,
+            "max_grad_norm": max_grad_norm if use_gradient_clipping else None,
+            **hyperparameters
+        },
+        entity=wandb_entity,
+        tags=["evaluation", architecture_name, model_type.lower()],
+        group=f"{architecture_name}_eval_{model_type.lower()}",
+        save_code=False,
+        directory=wandb_dir
+    )
+
+    if run is None:
+        print("Falha ao inicializar W&B. Continuando sem logging.\n")
+        return False, None
+
+    return True, run
 
 def log_confusion_matrix_figure(
         fig,

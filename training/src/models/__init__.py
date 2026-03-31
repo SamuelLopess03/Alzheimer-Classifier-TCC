@@ -11,6 +11,10 @@ from .model_adapters import (
     get_adaptation_info
 )
 
+from .utils import (
+    get_target_layer
+)
+
 __all__ = [
     # Architectures
     'create_model',
@@ -21,5 +25,8 @@ __all__ = [
     # Model adapters
     'adapt_model_for_grayscale',
     'verify_grayscale_adaptation',
-    "get_adaptation_info"
+    "get_adaptation_info",
+
+    # Utils
+    "get_target_layer"
 ]

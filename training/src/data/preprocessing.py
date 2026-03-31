@@ -1,8 +1,8 @@
+from typing import Dict, Tuple, Optional, Union, Sequence
 import numpy as np
 import cv2
 import torch
 from PIL import Image
-from typing import Dict, Tuple, Optional
 
 _ARCHITECTURE_CONFIGS = {
     "resnext50_32x4d": {
@@ -113,3 +113,17 @@ def prepare_image_for_augmentation(image) -> np.ndarray:
     image = normalize_image(image)
 
     return image
+
+def denormalize_images(
+    img: np.ndarray,
+    mean: Union[Sequence[float], np.ndarray],
+    std: Union[Sequence[float], np.ndarray]
+) -> np.ndarray:
+    mean = np.array(mean)
+    std = np.array(std)
+
+    img = (img * std) + mean
+    img = np.clip(img, 0, 1)
+    img_uint8 = (img * 255).astype(np.uint8)
+
+    return img_uint8

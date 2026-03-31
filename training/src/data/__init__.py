@@ -20,7 +20,8 @@ from .subject_utils import (
     extract_slice_index,
     resolve_dataset_chain,
     count_unique_subjects,
-    resolve_subset_labels
+    resolve_subset_labels,
+    get_subject_ids_from_dataset
 )
 
 from .pipeline import (
@@ -39,6 +40,7 @@ _HEAVY_COMPONENTS = {
     'convert_tensor_to_numpy': '.preprocessing',
     'prepare_image_for_augmentation': '.preprocessing',
     'validate_image_format': '.preprocessing',
+    'denormalize_images': '.preprocessing',
 
     # Augmentation
     'get_alzheimer_grayscale_augmentation': '.augmentation',
@@ -72,6 +74,7 @@ __all__ = [
     'resolve_dataset_chain',
     'count_unique_subjects',
     'resolve_subset_labels',
+    'get_subject_ids_from_dataset',
 
     # Dataset Loaders (binary & multiclass) - LEVE
     'prepare_dataset_binary',
@@ -90,6 +93,7 @@ __all__ = [
     'convert_pil_to_numpy',
     'convert_tensor_to_numpy',
     'prepare_image_for_augmentation',
+    'denormalize_images',
 
     # Augmentation - PESADO (Lazy)
     'get_alzheimer_grayscale_augmentation',
