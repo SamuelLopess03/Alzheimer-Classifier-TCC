@@ -1,14 +1,31 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision.models as models
-import timm
 import numpy as np
 from typing import Dict, Tuple, List, Optional
 from sklearn.utils.class_weight import compute_class_weight
 
-from .model_adapters import adapt_model_for_grayscale
+from .builder_registry import model_registry
+from . import builders 
 from ..utils import load_hyperparameters_config
+
+def _handle_freezing(model: nn.Module, architecture_name: str, arch_cfg: Dict):
+    freeze_backbone = arch_cfg.get('freeze_backbone', False)
+    classifier_layer = arch_cfg.get('classifier_layer', 'fc')
+    
+    if freeze_backbone:
+        for param in model.parameters():
+            param.requires_grad = False
+            
+        for name, param in model.named_parameters():
+            if classifier_layer in name or any(k in name for k in ['classifier', 'fc', 'head']):
+                param.requires_grad = True
+                
+        print(f"Backbone TOTALMENTE congelado para {architecture_name} (apenas o head será treinado)")
+    else:
+        for param in model.parameters():
+            param.requires_grad = True
+        print(f"Treinamento TOTAL (Backbone + Head) habilitado para {architecture_name}")
 
 def create_model(
         architecture_name: str,
@@ -21,7 +38,11 @@ def create_model(
     arch_lower = architecture_name.lower()
 
     if arch_lower not in hyperparams_config['model_config']:
-        raise ValueError(f"Arquitetura não suportada: {architecture_name}\n")
+        raise ValueError(f"Arquitetura não suportada no config: {architecture_name}\n")
+
+    builder = model_registry.get_builder(architecture_name)
+    if not builder:
+        raise ValueError(f"Builder não encontrado para a arquitetura: {architecture_name}")
 
     arch_cfg = hyperparams_config['model_config'][arch_lower]
     grayscale_cfg = hyperparams_config['grayscale_adaptation']
@@ -31,161 +52,128 @@ def create_model(
     print(f"   Dropout: {dropout}")
     print(f"   Num Classes: {num_classes}\n")
 
-    model = None
-
-    # ===== CNN ARCHITECTURES =====
-
-    if arch_lower == 'resnext50_32x4d':
-        model = models.resnext50_32x4d(
-            weights=models.ResNeXt50_32X4D_Weights.IMAGENET1K_V2
-        )
-        model = adapt_model_for_grayscale(
-            model,
-            architecture_name,
-            preserve_pretrained_weights=grayscale_cfg['preserve_pretrained_weights']
-        )
-
-        model.fc = nn.Sequential(
-            nn.Linear(int(model.fc.in_features), hidden_units),
-            nn.ReLU(True),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_units, num_classes)
-        )
-
-    elif arch_lower == 'convnext_tiny':
-        model = models.convnext_tiny(
-            weights=models.ConvNeXt_Tiny_Weights.IMAGENET1K_V1
-        )
-        model = adapt_model_for_grayscale(
-            model,
-            architecture_name,
-            preserve_pretrained_weights=grayscale_cfg['preserve_pretrained_weights']
-        )
-
-        layernorm: nn.Module = model.classifier[0]
-        flatten: nn.Module = model.classifier[1]
-        in_features: int = model.classifier[2].in_features
-        model.classifier = nn.Sequential(
-            layernorm,
-            flatten,
-            nn.Linear(in_features, hidden_units),
-            nn.ReLU(True),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_units, num_classes)
-        )
-
-    elif arch_lower == 'efficientnetv2_s':
-        model = models.efficientnet_v2_s(
-            weights=models.EfficientNet_V2_S_Weights.IMAGENET1K_V1
-        )
-        model = adapt_model_for_grayscale(
-            model,
-            architecture_name,
-            preserve_pretrained_weights=grayscale_cfg['preserve_pretrained_weights']
-        )
-
-        in_features: int = model.classifier[1].in_features
-        model.classifier = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(in_features, hidden_units),
-            nn.ReLU(True),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_units, num_classes)
-        )
-
-    elif arch_lower == 'densenet121':
-        model = models.densenet121(
-            weights=models.DenseNet121_Weights.IMAGENET1K_V1
-        )
-        model = adapt_model_for_grayscale(
-            model,
-            architecture_name,
-            preserve_pretrained_weights=grayscale_cfg['preserve_pretrained_weights']
-        )
-
-        model.classifier = nn.Sequential(
-            nn.Linear(int(model.classifier.in_features), hidden_units),
-            nn.ReLU(True),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_units, num_classes)
-        )
-
-    # ===== TRANSFORMER ARCHITECTURES =====
-
-    elif arch_lower == 'vit_b_16':
-        model = timm.create_model(
-            arch_cfg['timm_model'],
-            pretrained=arch_cfg['pretrained'],
-            num_classes=0
-        )
-        model = adapt_model_for_grayscale(
-            model,
-            architecture_name,
-            preserve_pretrained_weights=grayscale_cfg['preserve_pretrained_weights']
-        )
-
-        feature_dim = int(model.num_features)
-        model.head = nn.Sequential(
-            nn.LayerNorm(feature_dim),
-            nn.Dropout(dropout),
-            nn.Linear(feature_dim, hidden_units),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_units, num_classes)
-        )
-
-    elif arch_lower == 'swin_v2_tiny':
-        model = timm.create_model(
-            arch_cfg['timm_model'],
-            pretrained=arch_cfg['pretrained'],
-            num_classes=0
-        )
-        model = adapt_model_for_grayscale(
-            model,
-            architecture_name,
-            preserve_pretrained_weights=grayscale_cfg['preserve_pretrained_weights']
-        )
-
-        feature_dim = int(model.num_features)
-        model.head = nn.Sequential(
-            nn.LayerNorm(feature_dim),
-            nn.Dropout(dropout),
-            nn.Linear(feature_dim, hidden_units),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_units, num_classes)
-        )
-
-    freeze_backbone = arch_cfg.get('freeze_backbone', False)
-    classifier_layer = arch_cfg.get('classifier_layer', 'fc')
+    model = builder.build_base(architecture_name, arch_cfg)
     
-    if freeze_backbone:
-        # Congela todo o backbone, deixa apenas o classificador (head) treinável
-        for param in model.parameters():
-            param.requires_grad = False
-            
-        for name, param in model.named_parameters():
-            if classifier_layer in name or any(k in name for k in ['classifier', 'fc', 'head']):
-                param.requires_grad = True
-                
-        print(f"Backbone TOTALMENTE congelado para {architecture_name} (apenas o head será treinado)")
+    if grayscale_cfg.get('enabled', True):
+        print(f"Adaptando {architecture_name} para entrada grayscale...")
+        model = builder.adapt_grayscale(
+            model, 
+            arch_cfg, 
+            preserve_weights=grayscale_cfg.get('preserve_pretrained_weights', True)
+        )
+        print(f"Modelo adaptado com sucesso para grayscale!\n")
     else:
-        # Treinamento completo (Backbone + Head)
-        for param in model.parameters():
-            param.requires_grad = True
-        print(f"Treinamento TOTAL (Backbone + Head) habilitado para {architecture_name}")
+        print(f"Adaptação para grayscale desabilitada no config. Retornando modelo original.\n")
+
+    in_features = builder.get_in_features(model, arch_cfg)
+    model = builder.replace_head(model, arch_cfg, in_features, hidden_units, dropout, num_classes)
+
+    _handle_freezing(model, architecture_name, arch_cfg)
 
     model = model.to(device)
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total_params = sum(p.numel() for p in model.parameters())
 
-    print(f"Modelo criado (Congelamento Parcial)")
+    print(f"Modelo criado")
     print(f"   Parâmetros treináveis: {trainable_params:,}")
     print(f"   Parâmetros totais: {total_params:,}")
     print(f"   Ratio: {trainable_params / total_params * 100:.1f}%\n")
 
     return model
+
+def verify_grayscale_adaptation(
+        model: nn.Module,
+        architecture_name: str,
+        expected_channels: Optional[int] = None
+) -> bool:
+    hyperparams_config = load_hyperparameters_config()
+    arch_cfg = hyperparams_config['model_config'].get(architecture_name.lower())
+
+    if expected_channels is None:
+        expected_channels = hyperparams_config['grayscale_adaptation']['expected_channels']
+
+    builder = model_registry.get_builder(architecture_name)
+    if not builder:
+        print(f"\nErro: Builder não encontrado para verificação: {architecture_name}\n")
+        return False
+
+    try:
+        is_valid = builder.verify_grayscale(model, arch_cfg)
+        if is_valid:
+            print(f"\nVerificação OK: Modelo possui {expected_channels} canal(is) de entrada\n")
+        else:
+            print(f"\nVerificação FALHOU: Modelo não possui {expected_channels} canais\n")
+        return is_valid
+    except Exception as e:
+        print(f"\nErro na verificação: {e}\n")
+        return False
+
+def _setup_criterion(loss_function: str, hyperparams_config: Dict, train_dataset, num_classes: int, architecture_name: str, device: torch.device, label_smoothing: Optional[float]) -> nn.Module:
+    loss_cfg = hyperparams_config['loss_config'][loss_function]
+    class_weights = None
+    
+    if loss_cfg['use_class_weights']:
+        print("Calculando pesos das classes...\n")
+        labels = [sample[1] for sample in train_dataset]
+        class_weights = compute_class_weight('balanced', classes=np.array(list(range(num_classes))), y=labels)
+        class_weights = torch.tensor(class_weights, dtype=torch.float32).to(device)
+        print(f"   Class Weights: {class_weights.cpu().numpy()}\n")
+
+    if loss_function == 'crossentropy':
+        if label_smoothing is None:
+            arch_cfg = hyperparams_config['model_config'].get(architecture_name.lower())
+            arch_type = arch_cfg['type']
+            label_smoothing = loss_cfg['label_smoothing'][arch_type]
+
+        criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=label_smoothing if label_smoothing else 0.0)
+        print(f"Loss: CrossEntropyLoss (label_smoothing={label_smoothing})\n")
+        return criterion
+    
+    raise ValueError(f"Loss function não suportada: {loss_function}\n")
+
+def _setup_optimizer(model: nn.Module, hyperparams: Dict, hyperparams_config: Dict, architecture_name: str) -> optim.Optimizer:
+    optimizer_name = hyperparams['optimizer'].lower()
+    lr = float(hyperparams['learning_rate'])
+    arch_cfg = hyperparams_config['model_config'].get(architecture_name.lower())
+    arch_type = arch_cfg['type']
+    
+    fine_tuning_cfg = hyperparams_config.get('fine_tuning', {})
+    backbone_lr_ratio = float(fine_tuning_cfg.get('backbone_lr_ratio', {}).get(arch_type, 0.01))
+    
+    backbone_lr = lr * backbone_lr_ratio
+    head_lr = lr
+
+    classifier_layer = arch_cfg['classifier_layer']
+    head_params, backbone_params = [], []
+
+    for name, param in model.named_parameters():
+        if not param.requires_grad: continue
+        if classifier_layer in name: head_params.append(param)
+        else: backbone_params.append(param)
+
+    print(f"\nFine-Tuning com LR Diferencial:")
+    print(f"   Backbone LR: {backbone_lr:.2e} (ratio: {backbone_lr_ratio})")
+    print(f"   Head LR:     {head_lr:.2e}")
+
+    param_groups = []
+    if backbone_params: param_groups.append({'params': backbone_params, 'lr': backbone_lr})
+    if head_params: param_groups.append({'params': head_params, 'lr': head_lr})
+        
+    opt_cfg = hyperparams_config['optimizer_config'][optimizer_name]
+    
+    if optimizer_name == 'adam':
+        optimizer = optim.Adam(param_groups, weight_decay=float(opt_cfg['weight_decay']))
+    elif optimizer_name == 'sgd':
+        optimizer = optim.SGD(param_groups, momentum=opt_cfg['momentum'], weight_decay=float(opt_cfg['weight_decay']))
+    elif optimizer_name == 'adamw':
+        wd = float(opt_cfg['weight_decay'][arch_type])
+        optimizer = optim.AdamW(param_groups, weight_decay=wd)
+    else:
+        raise ValueError(f"Optimizer não suportado: {optimizer_name}\n")
+
+    print(f"Optimizer: {optimizer_name.upper()} (backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e})\n")
+    return optimizer
 
 def create_model_with_architecture(
         hyperparams: Dict,
@@ -201,119 +189,20 @@ def create_model_with_architecture(
     print(f"CRIANDO MODELO COM CONFIGURAÇÃO")
     print(f"{'-' * 60}\n")
 
-    hidden_units = hyperparams['hidden_units']
-    dropout = hyperparams['dropout']
-    optimizer_name = hyperparams['optimizer']
-    loss_function = hyperparams['loss_function']
-    lr = float(hyperparams['learning_rate'])
-
     num_classes = len(class_names)
-
     model = create_model(
         architecture_name=architecture_name,
-        hidden_units=hidden_units,
-        dropout=dropout,
+        hidden_units=hyperparams['hidden_units'],
+        dropout=hyperparams['dropout'],
         num_classes=num_classes,
         device=device
     )
 
-    loss_cfg = hyperparams_config['loss_config'][loss_function]
+    criterion = _setup_criterion(hyperparams['loss_function'], hyperparams_config, train_dataset, num_classes, architecture_name, device, label_smoothing)
 
-    class_weights = None
-    if loss_cfg['use_class_weights']:
-        print("Calculando pesos das classes...\n")
-        labels = [sample[1] for sample in train_dataset]
-        class_weights = compute_class_weight(
-            'balanced',
-            classes=np.array(list(range(num_classes))),
-            y=labels
-        )
-        class_weights = torch.tensor(class_weights, dtype=torch.float32).to(device)
-        print(f"   Class Weights: {class_weights.cpu().numpy()}\n")
-
-    arch_lower = architecture_name.lower()
-    arch_cfg = hyperparams_config['model_config'][arch_lower]
-    is_transformer = arch_cfg['type'] == 'transformer'
-
-    if loss_function == 'crossentropy':
-        if label_smoothing is None:
-            arch_type = 'transformer' if is_transformer else 'cnn'
-            label_smoothing = loss_cfg['label_smoothing'][arch_type]
-
-        if label_smoothing is not None and label_smoothing > 0:
-            criterion = nn.CrossEntropyLoss(
-                weight=class_weights,
-                label_smoothing=label_smoothing
-            )
-            print(f"Loss: CrossEntropyLoss (label_smoothing={label_smoothing})\n")
-        else:
-            criterion = nn.CrossEntropyLoss(weight=class_weights)
-            print(f"Loss: CrossEntropyLoss\n")
-    else:
-        raise ValueError(f"Loss function não suportada: {loss_function}\n")
-
-    fine_tuning_cfg = hyperparams_config.get('fine_tuning', {})
-    backbone_lr_ratios = fine_tuning_cfg.get('backbone_lr_ratio', {'cnn': 0.01, 'transformer': 0.001})
-    arch_type = 'transformer' if is_transformer else 'cnn'
-    backbone_lr_ratio = float(backbone_lr_ratios.get(arch_type, 0.01))
-
-    backbone_lr = lr * backbone_lr_ratio
-    head_lr = lr
-
-    classifier_layer = arch_cfg['classifier_layer']
-    head_params = []
-    backbone_params = []
-
-    for name, param in model.named_parameters():
-        if not param.requires_grad:
-            continue
-        if classifier_layer in name:
-            head_params.append(param)
-        else:
-            backbone_params.append(param)
-
-    print(f"\nFine-Tuning com LR Diferencial:")
-    print(f"   Backbone LR: {backbone_lr:.2e} (ratio: {backbone_lr_ratio})")
-    print(f"   Head LR:     {head_lr:.2e}")
-    print(f"   Parâmetros Backbone: {sum(p.numel() for p in backbone_params):,}")
-    print(f"   Parâmetros Head:     {sum(p.numel() for p in head_params):,}\n")
-
-    opt_cfg = hyperparams_config['optimizer_config'][optimizer_name.lower()]
-
-    param_groups = []
-    if backbone_params:
-        param_groups.append({'params': backbone_params, 'lr': backbone_lr})
-    if head_params:
-        param_groups.append({'params': head_params, 'lr': head_lr})
-        
-    if optimizer_name.lower() == 'adam':
-        optimizer = optim.Adam(
-            param_groups,
-            weight_decay=float(opt_cfg['weight_decay'])
-        )
-        print(f"Optimizer: Adam (backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e}, wd={opt_cfg['weight_decay']})\n")
-
-    elif optimizer_name.lower() == 'sgd':
-        optimizer = optim.SGD(
-            param_groups,
-            momentum=opt_cfg['momentum'],
-            weight_decay=float(opt_cfg['weight_decay'])
-        )
-        print(f"Optimizer: SGD (backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e})\n")
-
-    elif optimizer_name.lower() == 'adamw':
-        wd = float(opt_cfg['weight_decay'][arch_type])
-        optimizer = optim.AdamW(
-            param_groups,
-            weight_decay=wd
-        )
-        print(f"Optimizer: AdamW (backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e}, wd={wd})\n")
-
-    else:
-        raise ValueError(f"Optimizer não suportado: {optimizer_name}\n")
+    optimizer = _setup_optimizer(model, hyperparams, hyperparams_config, architecture_name)
 
     print(f"\n{'-' * 60}\n")
-
     return model, criterion, optimizer
 
 def get_architecture_specific_param_grid(architecture_name: str) -> Dict:
@@ -323,19 +212,11 @@ def get_architecture_specific_param_grid(architecture_name: str) -> Dict:
     if arch_lower not in hyperparams_config['model_config']:
         raise ValueError(f"Arquitetura não suportada: {architecture_name}")
 
-    if arch_lower == 'vit_b_16':
-        grid_key = 'vit'
-    elif arch_lower == 'swin_v2_tiny':
-        grid_key = 'swin'
-    else:
-        grid_key = 'cnn'
+    if 'vit' in arch_lower: grid_key = 'vit'
+    elif 'swin' in arch_lower: grid_key = 'swin'
+    else: grid_key = 'cnn'
 
     return hyperparams_config['hyperparameter_grids'][grid_key]
 
 def get_supported_architectures() -> List[str]:
-    hyperparams_config = load_hyperparameters_config()
-
-    cnn_archs = hyperparams_config['supported_architectures']['cnn']
-    transformer_archs = hyperparams_config['supported_architectures']['transformer']
-
-    return cnn_archs + transformer_archs
+    return model_registry.get_all_supported_architectures()

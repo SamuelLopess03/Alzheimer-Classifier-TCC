@@ -32,6 +32,7 @@ model_config:
     weights: "IMAGENET1K_V2"
     adaptation_layer: "conv1"
     classifier_layer: "fc"
+    gradcam_target_layer: "layer4[-1]"
     freeze_backbone: true
 
   convnext_tiny:
@@ -39,6 +40,7 @@ model_config:
     weights: "IMAGENET1K_V1"
     adaptation_layer: "features[0][0]"
     classifier_layer: "classifier"
+    gradcam_target_layer: "stages[-1]"
     freeze_backbone: true
 
   efficientnetv2_s:
@@ -46,6 +48,7 @@ model_config:
     weights: "IMAGENET1K_V1"
     adaptation_layer: "features[0][0]"
     classifier_layer: "classifier"
+    gradcam_target_layer: "features[-1]"
     freeze_backbone: true
 
   densenet121:
@@ -53,6 +56,7 @@ model_config:
     weights: "IMAGENET1K_V1"
     adaptation_layer: "features.conv0"
     classifier_layer: "classifier"
+    gradcam_target_layer: "features.denseblock4"
     freeze_backbone: true
 
   vit_b_16:
@@ -61,6 +65,7 @@ model_config:
     pretrained: true
     adaptation_layer: "patch_embed.proj"
     classifier_layer: "head"
+    gradcam_target_layer: "blocks[-1].norm1"
     freeze_patch_embed: true
     freeze_backbone: true 
 
@@ -70,6 +75,7 @@ model_config:
     pretrained: true
     adaptation_layer: "patch_embed.proj"
     classifier_layer: "head"
+    gradcam_target_layer: "layers[-1].blocks[-1].norm1"
     freeze_patch_embed: true
     freeze_backbone: true
 

@@ -8,10 +8,11 @@ from pathlib import Path
 from torch.utils.data import DataLoader
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ..models import get_target_layer
 from ..data import denormalize_images
+from ..utils import load_hyperparameters_config
 
 def _collect_class_samples(
     test_loader: DataLoader, 
@@ -114,8 +115,12 @@ def generate_gradcam_visualizations(
     print(f"{'-' * 60}\n")
 
     model.eval()
+    
+    hyperparams_config = load_hyperparameters_config()
+    arch_cfg = hyperparams_config['model_config'].get(architecture_name.lower())
+    target_layer_path = arch_cfg.get('gradcam_target_layer') if arch_cfg else None
 
-    target_layer = get_target_layer(model, architecture_name)
+    target_layer = get_target_layer(model, target_layer_path)
     print(f"Camada alvo para Grad-CAM: {target_layer.__class__.__name__}\n")
 
     cam = GradCAM(model=model, target_layers=[target_layer])
