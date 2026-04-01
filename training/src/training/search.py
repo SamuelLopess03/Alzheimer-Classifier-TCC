@@ -15,11 +15,12 @@ from ..models import (
 from .factory import get_training_config, generate_random_combinations
 from .trainer import run_training_process
 from src.utils.config import load_hyperparameters_config
-from ..evaluation import calculate_combined_score
+from ..evaluation import calculate_combined_score, aggregate_repetition_metrics
 from ..visualization import (
     init_wandb_run, 
     finish_wandb_run, 
-    summarize_wandb_repetitions
+    print_repetition_summary,
+    log_search_metrics
 )
 from ..data import (
     create_stratified_holdout_split,
@@ -118,9 +119,11 @@ def _run_combination_repetitions(idx, params, n_repetitions, all_splits, archite
 
 def _process_combination_results(idx, params, repetition_results, results, architecture_name, model_type, class_names, checkpoint_manager, executed_indices, total_combos):
     is_multiclass = (model_type == 'multiclass')
-    res = summarize_wandb_repetitions(repetition_results, params, idx, is_multiclass=is_multiclass, class_names=class_names)
-    aggregated = res['aggregated']
+    aggregated = aggregate_repetition_metrics(repetition_results, is_multiclass)
     
+    print_repetition_summary(aggregated, idx)
+    log_search_metrics(aggregated, idx)
+
     checkpoint_key = f"{architecture_name}_{model_type}"
     checkpoint_manager.save_combination(checkpoint_key, idx, params, aggregated)
 
