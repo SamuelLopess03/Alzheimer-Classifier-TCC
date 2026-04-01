@@ -1,142 +1,140 @@
 import os
 import json
-from pathlib import Path
-from typing import Dict, Tuple, Optional
 import torch
-import torch.nn as nn
-import torch.optim as optim
+from pathlib import Path
+from typing import Dict
 from torchvision import datasets as tv_datasets
 
-from ..models import create_model_with_architecture
-from ..training import train_final_model, get_training_config
+from ..models.architectures import create_model_with_architecture
 from .evaluator import evaluate_model
-from ..data import create_stratified_holdout_split
 from ..utils import (
-    load_hyperparameters_config, 
-    get_pytorch_device,
+    get_pytorch_device, 
+    print_banner, 
+    print_section,
     find_best_experiment,
     extract_best_hyperparameters,
-    print_banner,
-    print_section
+    load_binary_config,
+    load_multiclass_config
 )
-from ..visualization import print_detailed_metrics, print_class_distribution
+from ..visualization import print_detailed_metrics, init_wandb_run, finish_wandb_run
 
-def load_inference_datasets(data_path: str, model_type: str) -> Tuple[tv_datasets.ImageFolder, tv_datasets.ImageFolder]:
-    train_path = os.path.join(data_path, f'splits/{model_type}/train')
+def load_test_dataset(data_path: str, model_type: str) -> tv_datasets.ImageFolder:
     test_path = os.path.join(data_path, f'splits/{model_type}/test')
+    if not os.path.exists(test_path):
+        raise FileNotFoundError(f"Dataset de teste não encontrado em {test_path}")
+    return tv_datasets.ImageFolder(root=test_path, transform=None)
 
-    if not os.path.exists(train_path) or not os.path.exists(test_path):
-        raise FileNotFoundError(f"Datasets não encontrados em {train_path} ou {test_path}")
-
-    train_dataset = tv_datasets.ImageFolder(root=train_path, transform=None)
-    test_dataset = tv_datasets.ImageFolder(root=test_path, transform=None)
-    
-    return train_dataset, test_dataset
-
-def save_inference_results(
-    training_results: Dict,
-    evaluation_results: Dict,
-    best_experiment: Dict,
-    hyperparameters: Dict,
-    models_path: str
-) -> Path:
+def save_inference_results(evaluation_results: Dict, models_path: str, model_type: str) -> Path:
     final_results = {
-        'best_experiment': best_experiment,
-        'hyperparameters': hyperparameters,
-        'training_results': {
-            'best_epoch': training_results['best_epoch'],
-            'best_val_f1': training_results['best_val_f1'],
-        },
-        'evaluation_results': {
-            'test_metrics': evaluation_results['test_metrics'],
-        },
-        'checkpoint_path': training_results['checkpoint_path'],
+        'model_type': model_type,
+        'test_metrics': evaluation_results['test_metrics'],
         'gradcam_path': evaluation_results.get('gradcam_path')
     }
-
-    output_dir = Path(models_path)
+    output_dir = Path(models_path) / model_type
     output_dir.mkdir(parents=True, exist_ok=True)
-    results_file = output_dir / "final_training_results.json"
-
+    results_file = output_dir / "final_inference_results.json"
     with open(results_file, 'w') as f:
         json.dump(final_results, f, indent=2, default=str)
-
     return results_file
 
-def run_full_inference_pipeline(
+def _open_wandb_inference_run(config: Dict, architecture_name: str, model_type: str, hyperparams: Dict, models_path: str):
+    wandb_cfg = config.get('logging', {}).get('wandb', {})
+    if not wandb_cfg.get('enabled', False):
+        return False
+
+    init_wandb_run(
+        project_name=wandb_cfg['project'],
+        run_name=f"{architecture_name}_{model_type}_inference",
+        config={
+            "architecture": architecture_name,
+            "model_type": model_type,
+            "phase": "inference",
+            **hyperparams
+        },
+        entity=wandb_cfg.get('entity'),
+        tags=["inference", architecture_name, model_type],
+        group=f"inference/{model_type}",    # Pasta dedicada no WandB
+        directory=os.path.join(models_path, 'wandb_logs')
+    )
+    return True
+
+def run_inference_pipeline(
     model_type: str,
-    experiments_path: str,
     data_path: str,
     models_path: str,
+    experiments_path: str,
     generate_gradcam: bool = False,
     gradcam_samples: int = 10
 ):
-    print_banner("PIPELINE: TREINAMENTO FINAL + AVALIAÇÃO", f"Model Type: {model_type.upper()}")
+    print_banner("PIPELINE: AVALIAÇÃO E INFERÊNCIA", f"Model Type: {model_type.upper()}")
 
     device = get_pytorch_device()
     is_multiclass = (model_type == 'multiclass')
+    config = load_multiclass_config() if is_multiclass else load_binary_config()
+    class_names = config['model']['class_names']
 
-    print_section("BUSCANDO MELHOR EXPERIMENTO")
+    print_section("CONFIGURANDO MODELO FINAL")
     best_exp = find_best_experiment(experiments_path, model_type)
     if not best_exp:
-        print(f"Nenhum experimento encontrado para '{model_type}' em {experiments_path}")
-        return
+        print(f"Erro: Nenhum experimento encontrado para '{model_type}' em {experiments_path}")
+        return False
+        
+    hyperparams = extract_best_hyperparameters(best_exp)
+    architecture_name = hyperparams['architecture_name']
 
-    hyperparameters = extract_best_hyperparameters(best_exp)
-    print(f"Melhor experimento: {best_exp['architecture_name']} (Score: {best_exp['best_score']:.4f})")
+    print_section("CARREGANDO DATASET DE TESTE")
+    test_dataset = load_test_dataset(data_path, model_type)
+    print(f"Dataset de teste carregado: {len(test_dataset)} amostras.")
 
-    print_section("CARREGANDO DATASETS")
-    train_dataset, test_dataset = load_inference_datasets(data_path, model_type)
-
-    config = get_training_config(is_multiclass)
-    print_class_distribution(train_dataset, config['model']['class_names'])
-
-    print_section("CONFIGURANDO MODELO E CRITÉRIOS")
-    model, criterion, optimizer = create_model_with_architecture(
-        hyperparams=hyperparameters,
-        architecture_name=hyperparameters['architecture_name'],
-        class_names=config['model']['class_names'],
+    model, criterion, _ = create_model_with_architecture(
+        hyperparams=hyperparams,
+        architecture_name=architecture_name,
+        class_names=class_names,
         device=device,
-        train_dataset=train_dataset
+        train_dataset=test_dataset
     )
 
-    train_ratio = config['data']['split_ratios']['train']
-    val_ratio = config['data']['split_ratios']['train_val']
-    train_split, val_split = create_stratified_holdout_split(
-        train_dataset, train_ratio, val_ratio, random_state=config['data']['random_seed']
+    checkpoint_dir = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", str(config['checkpoint']['save_path']))
+    )
+    checkpoint_file = os.path.join(checkpoint_dir, "best_model.pth")
+    
+    if not os.path.exists(checkpoint_file):
+        print(f"Erro: Arquivo de pesos não encontrado em {checkpoint_file}")
+        return False
+        
+    print(f"Carregando pesos de: {checkpoint_file}")
+    checkpoint = torch.load(checkpoint_file, map_location=device)
+    model.load_state_dict(
+        checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint
+    )
+    model.eval()
+
+    model.architecture_name = architecture_name
+    model.hyperparameters = hyperparams
+    model.class_names = class_names
+
+    wandb_active = _open_wandb_inference_run(
+        config, architecture_name, model_type, hyperparams, models_path
     )
 
-    print_section("EXECUTANDO TREINAMENTO FINAL")
-    training_results = train_final_model(
-        model=model,
-        criterion=criterion,
-        optimizer=optimizer,
-        train_split=train_split,
-        val_split=val_split,
-        hyperparameters=hyperparameters,
-        device=device,
-        is_multiclass=is_multiclass,
-        use_gradient_clipping=hyperparameters.get('use_gradient_clipping', True)
-    )
-
-    print_section("AVALIAÇÃO NO TEST SET")
+    print_section("EXECUTANDO AVALIAÇÃO NO TEST SET")
     evaluation_results = evaluate_model(
         model=model,
-        criterion=criterion,
-        optimizer=optimizer,
         test_dataset=test_dataset,
-        training_results=training_results,
-        hyperparameters=hyperparameters,
         device=device,
         generate_gradcam=generate_gradcam,
-        gradcam_samples=gradcam_samples
+        gradcam_samples=gradcam_samples,
+        is_multiclass=is_multiclass,
+        criterion=criterion
     )
 
-    print_detailed_metrics(evaluation_results['test_metrics'], config['model']['class_names'])
+    if wandb_active:
+        finish_wandb_run()
 
-    results_file = save_inference_results(
-        training_results, evaluation_results, best_exp, hyperparameters, 
-        os.path.join(models_path, model_type)
-    )
+    print_detailed_metrics(evaluation_results['test_metrics'], class_names)
 
-    print_banner("PIPELINE CONCLUÍDA COM SUCESSO!", f"Resultados salvos em: {results_file.name}")
+    results_file = save_inference_results(evaluation_results, models_path, model_type)
+
+    print_banner("AVALIAÇÃO CONCLUÍDA!", f"Resultados salvos em: {results_file.name}")
+    return True

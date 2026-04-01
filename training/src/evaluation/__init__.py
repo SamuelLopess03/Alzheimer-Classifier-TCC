@@ -6,8 +6,8 @@ from .metrics import (
 )
 
 from .pipeline import (
-    run_full_inference_pipeline,
-    load_inference_datasets,
+    run_inference_pipeline,
+    load_test_dataset,
     save_inference_results
 )
 
@@ -33,9 +33,9 @@ __all__ = [
     "calculate_combined_score",
     "evaluate_performance",
 
-    # Pipeline Functions
-    "run_full_inference_pipeline",
-    "load_inference_datasets",
+    # Pipeline Functions (Pure Inference)
+    "run_inference_pipeline",
+    "load_test_dataset",
     "save_inference_results",
 
     # Evaluator Functions

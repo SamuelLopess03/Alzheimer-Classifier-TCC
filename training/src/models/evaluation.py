@@ -1,17 +1,22 @@
 import torch
 import torch.nn as nn
 import os
-from typing import Tuple, Optional, Dict, List
+import numpy as np
+from typing import Tuple, Optional, Dict, List, Any
 from pathlib import Path
+from PIL import Image
+from torchvision import transforms
 
 from ..utils import (
     load_binary_config, 
     load_multiclass_config, 
-    load_hyperparameters_config,
-    find_best_experiment,
-    extract_best_hyperparameters
+    load_hyperparameters_config
 )
 from .architectures import create_model
+from ..data import denormalize_images
+from ..evaluation.gradcam import run_single_gradcam
+
+DEFAULT_EXPERIMENTS_PATH = "../../shared/logs"
 
 class Evaluation(nn.Module):
     def __init__(self, device: torch.device = None):
@@ -32,8 +37,14 @@ class Evaluation(nn.Module):
         
         self.binary_model = None
         self.multiclass_model = None
+        
+        self.transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.449], std=[0.226])
+        ])
 
-    def predict(self, x: torch.Tensor) -> Dict:
+    def _predict(self, x: torch.Tensor) -> Dict:
         if x.dim() == 3:
             x = x.unsqueeze(0)
 
@@ -45,7 +56,7 @@ class Evaluation(nn.Module):
             multiclass_probs=torch.softmax(multiclass_output, dim=1)[0] if multiclass_output is not None else None
         )
 
-    def predict_subject(self, x: torch.Tensor) -> Dict:
+    def _predict_subject(self, x: torch.Tensor) -> Dict:
         if x.dim() == 3:
             x = x.unsqueeze(0)
             
@@ -62,6 +73,33 @@ class Evaluation(nn.Module):
             binary_probs=binary_probs_avg,
             multiclass_probs=multiclass_probs_avg
         )
+
+    def predict_image(self, image_path: str) -> Dict:
+        img_tensor = self._load_and_preprocess_image(image_path)
+
+        return self._predict(img_tensor)
+
+    def predict_subject_folder(self, folder_path: str) -> Dict:
+        if not os.path.isdir(folder_path):
+            raise FileNotFoundError(f"Pasta não encontrada: {folder_path}")
+            
+        file_list = [
+            os.path.join(folder_path, f) for f in os.listdir(folder_path)
+            if f.lower().endswith(('.png', '.jpg', '.jpeg'))
+        ]
+        
+        if not file_list:
+            raise ValueError(f"Nenhuma imagem encontrada na pasta: {folder_path}")
+            
+        tensors = [self._load_and_preprocess_image(p) for p in file_list]
+        subject_tensor = torch.cat(tensors, dim=0) # [N, 1, 224, 224]
+        
+        return self._predict_subject(subject_tensor)
+
+    def _load_and_preprocess_image(self, path: str) -> torch.Tensor:
+        img = Image.open(path).convert('L')
+
+        return self.transform(img).unsqueeze(0) # [1, 1, 224, 224]
 
     def _forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         if self.binary_model is None or self.multiclass_model is None:
@@ -118,71 +156,52 @@ class Evaluation(nn.Module):
 
         return result
 
-    def _discover_best_models(self, experiments_path: str) -> Tuple[Dict, Dict]:
-        try:
-            binary_exp = find_best_experiment(experiments_path, 'binary')
-            multiclass_exp = find_best_experiment(experiments_path, 'multiclass')
-            
-            if not binary_exp or not multiclass_exp:
-                raise ValueError("Experimentos não encontrados.")
-            
-            bin_hparams = extract_best_hyperparameters(binary_exp)
-            multi_hparams = extract_best_hyperparameters(multiclass_exp)
-            
-            print(f"Modelo Binário: {bin_hparams['architecture_name']}")
-            print(f"Modelo Multiclasse: {multi_hparams['architecture_name']}")
-            return bin_hparams, multi_hparams
-        except Exception as e:
-            print(f"Erro ao localizar configurações: {e}")
-            raise
-
-    def _initialize_model_instances(self, bin_hparams: Dict, multi_hparams: Dict):
-        self.binary_model = create_model(
-            architecture_name=bin_hparams['architecture_name'],
-            hidden_units=bin_hparams['hidden_units'],
-            dropout=bin_hparams['dropout'],
-            num_classes=self.binary_num_classes,
-            device=self.device
-        )
-        self.multiclass_model = create_model(
-            architecture_name=multi_hparams['architecture_name'],
-            hidden_units=multi_hparams['hidden_units'],
-            dropout=multi_hparams['dropout'],
-            num_classes=self.multiclass_num_classes,
-            device=self.device
-        )
-
-    def _resolve_checkpoint_path(self, config: Dict) -> str:
-        checkpoint_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), str(config['checkpoint']['save_path'])))
-        return str(Path(checkpoint_dir) / "best_model.pth")
-
-    def _load_weights(self, model: nn.Module, path: str, label: str):
+    def _load_model_from_checkpoint(self, path: str, model_type: str) -> nn.Module:
         try:
             checkpoint = torch.load(path, map_location=self.device)
+
+            if 'architecture_name' not in checkpoint:
+                raise ValueError(f"Checkpoint {model_type} em '{path}' é inválido ou legado (não contém metadados internos).")
+
+            arch_name = checkpoint['architecture_name']
+            hparams = checkpoint['hyperparameters']
+            num_classes = checkpoint['num_classes']
+            print(f"[Checkpoint] Carregando {model_type} ({arch_name}) via metadados internos.")
+
+            model = create_model(
+                architecture_name=arch_name,
+                hidden_units=hparams['hidden_units'],
+                dropout=hparams['dropout'],
+                num_classes=num_classes,
+                device=self.device
+            )
+            
             state_dict = checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint
             model.load_state_dict(state_dict)
-            print(f"Pesos {label} carregados de: {os.path.basename(path)}")
+            model.eval()
+            
+            model.architecture_name = arch_name
+            
+            return model
+            
         except Exception as e:
-            print(f"Erro ao carregar pesos {label}: {e}")
+            print(f"Erro ao carregar modelo {model_type} de {path}: {e}")
             raise
 
-    def load_models(self, experiments_path: str = "../../shared/logs", binary_path: str = None, multiclass_path: str = None):
-        print(f"\n{'-' * 60}\nCONFIGURANDO SISTEMA DE AVALIAÇÃO EM CASCADA\n{'-' * 60}")
-
-        bin_hparams, multi_hparams = self._discover_best_models(experiments_path)
-
-        self._initialize_model_instances(bin_hparams, multi_hparams)
+    def load_models(self, binary_path: str = None, multiclass_path: str = None):
+        print(f"\n{'-' * 60}\nINICIALIZANDO SISTEMA DE AVALIAÇÃO EM CASCADA\n{'-' * 60}")
 
         binary_path = binary_path or self._resolve_checkpoint_path(self.binary_config)
         multiclass_path = multiclass_path or self._resolve_checkpoint_path(self.multiclass_config)
 
-        self._load_weights(self.binary_model, binary_path, "Binário")
-        self._load_weights(self.multiclass_model, multiclass_path, "Multiclasse")
-
-        self.binary_model.eval()
-        self.multiclass_model.eval()
+        self.binary_model = self._load_model_from_checkpoint(binary_path, 'binary')
+        self.multiclass_model = self._load_model_from_checkpoint(multiclass_path, 'multiclass')
 
         print(f"\n{'-' * 60}\nSISTEMA PRONTO PARA INFERÊNCIA\n{'-' * 60}")
+
+    def _resolve_checkpoint_path(self, config: Dict) -> str:
+        checkpoint_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), str(config['checkpoint']['save_path'])))
+        return str(Path(checkpoint_dir) / "best_model.pth")
 
     def print_prediction(self, result: Dict):
         print(f"\n{'=' * 40}\nDIAGNÓSTICO FINAL\n{'=' * 40}")
@@ -192,3 +211,27 @@ class Evaluation(nn.Module):
             print(f"ESTÁGIO: {result['multiclass_prediction']['class_name']} ({result['multiclass_prediction']['confidence'] * 100:.2f}%)")
         
         print(f"{'-' * 40}\nPREDIÇÃO: {result['final_prediction'].upper()}\n{'=' * 40}")
+
+    def generate_gradcam(self, image_path: str, save_dir: str):
+        if self.binary_model is None:
+            raise RuntimeError("Modelos não carregados.")
+
+        os.makedirs(save_dir, exist_ok=True)
+        img_tensor = self._load_and_preprocess_image(image_path).to(self.device).squeeze(0) # [1, 224, 224]
+        
+        run_single_gradcam(
+            model=self.binary_model,
+            img_tensor=img_tensor,
+            device=self.device,
+            class_names=self.binary_class_names,
+            save_path=os.path.join(save_dir, "gradcam_binary.png")
+        )
+
+        if self.multiclass_model:
+            run_single_gradcam(
+                model=self.multiclass_model,
+                img_tensor=img_tensor,
+                device=self.device,
+                class_names=self.multiclass_class_names,
+                save_path=os.path.join(save_dir, "gradcam_multiclass.png")
+            )
