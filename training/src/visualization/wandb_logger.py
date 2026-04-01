@@ -8,31 +8,163 @@ import torch.nn as nn
 
 from ..evaluation import aggregate_repetition_metrics
 
-def log_performance_metrics(
+def log_search_metrics(aggregated: Dict, combination_index: int):
+    if wandb.run is None:
+        return
+
+    wandb.log({
+        "search/f1":           aggregated.get('mean_f1', 0.0),
+        "search/balanced_acc": aggregated.get('mean_balanced_accuracy', 0.0),
+        "search/mcc":          aggregated.get('mean_mcc', 0.0),
+        "search/val_loss":     aggregated.get('mean_loss', 0.0),
+        "search/combination":  combination_index,
+    })
+
+def summarize_wandb_repetitions(
+        repetition_results: List[Dict],
+        params: Dict,
+        idx: int,
+        is_multiclass: bool = False,
+        class_names: Optional[List[str]] = None
+) -> Dict:
+    aggregated = aggregate_repetition_metrics(repetition_results, is_multiclass)
+    
+    log_search_metrics(aggregated, idx)
+
+    val_f1_scores = [r['best_f1_score'] for r in repetition_results]
+    best_rep_idx = int(np.argmax(val_f1_scores))
+
+    print(f"\nAgregação da Combinação #{idx + 1}")
+    print(f"  Mean F1: {aggregated['mean_f1'] * 100:.2f}% ± {aggregated['std_f1'] * 100:.2f}%")
+    print(f"  Mean Balanced Acc: {aggregated['mean_balanced_accuracy'] * 100:.2f}% ± {aggregated['std_balanced_accuracy'] * 100:.2f}%")
+
+    return {
+        'params': params,
+        'combination_index': idx,
+        'aggregated': aggregated,
+        'n_successful_repetitions': len(repetition_results),
+        'best_repetition_index': best_rep_idx,
+        'best_repetition_f1_score': float(val_f1_scores[best_rep_idx])
+    }
+
+def log_final_training_metrics(
         metrics: Dict,
-        repetition_number: int,
-        epoch_number: int,
-        class_names: List[str]
+        epoch: int,
+        repetition: int,
+        class_names: List[str],
+        train_loss: float = None,
+        learning_rate: float = None
 ):
     if wandb.run is None:
         return
 
-    wandb_log = {
-        f"rep_{repetition_number}/epoch": epoch_number,
-        f"rep_{repetition_number}/f1_subj": metrics.get('f1_score', 0.0),
-        f"rep_{repetition_number}/acc_subj": metrics.get('accuracy', 0.0),
-        f"rep_{repetition_number}/mcc_subj": metrics.get('matthews_correlation_coefficient', 0.0),
-        f"rep_{repetition_number}/kappa_subj": metrics.get('cohen_kappa', 0.0),
-        f"rep_{repetition_number}/loss": metrics.get('val_loss', 0.0),
+    prefix = f"rep_{repetition}"
+
+    log_dict = {
+        "epoch": epoch,
+        f"{prefix}/val/f1":           metrics.get('f1_score', 0.0),
+        f"{prefix}/val/balanced_acc": metrics.get('balanced_accuracy', 0.0),
+        f"{prefix}/val/accuracy":     metrics.get('accuracy', 0.0),
+        f"{prefix}/val/mcc":          metrics.get('matthews_correlation_coefficient', 0.0),
+        f"{prefix}/val/kappa":        metrics.get('cohen_kappa', 0.0),
+        f"{prefix}/val/loss":         metrics.get('val_loss', 0.0),
+        f"{prefix}/val/precision":    metrics.get('precision', 0.0),
+        f"{prefix}/val/recall":       metrics.get('recall', 0.0),
     }
 
-    if 'f1_per_class' in metrics:
-        f1_list = metrics['f1_per_class']
-        for i, name in enumerate(class_names):
-            if i < len(f1_list):
-                wandb_log[f"rep_{repetition_number}/f1_{name}"] = f1_list[i]
+    if 'specificity' in metrics:
+        log_dict[f"{prefix}/val/specificity"] = metrics['specificity']
 
-    wandb.log(wandb_log)
+    if 'negative_predictive_value' in metrics:
+        log_dict[f"{prefix}/val/npv"] = metrics['negative_predictive_value']
+
+    if 'f1_macro' in metrics:
+        log_dict[f"{prefix}/val/f1_macro"] = metrics['f1_macro']
+
+    if train_loss is not None:
+        log_dict[f"{prefix}/train/loss"] = train_loss
+
+    if learning_rate is not None:
+        log_dict[f"{prefix}/train/lr"] = learning_rate
+
+    if 'f1_per_class' in metrics:
+        for i, name in enumerate(class_names):
+            if i < len(metrics['f1_per_class']):
+                log_dict[f"{prefix}/val/f1_class_{name}"] = metrics['f1_per_class'][i]
+
+    wandb.log(log_dict)
+
+def log_inference_results(
+        test_metrics: Dict,
+        class_names: List[str],
+        is_multiclass: bool,
+        cm_fig=None,
+        roc_fig=None
+):
+    if wandb.run is None:
+        return
+
+    log_dict = {
+        "test/f1":           test_metrics.get('f1_score', 0.0),
+        "test/balanced_acc": test_metrics.get('balanced_accuracy', 0.0),
+        "test/accuracy":     test_metrics.get('accuracy', 0.0),
+        "test/mcc":          test_metrics.get('matthews_correlation_coefficient', 0.0),
+        "test/kappa":        test_metrics.get('cohen_kappa', 0.0),
+        "test/loss":         test_metrics.get('val_loss', 0.0),
+        "test/precision":    test_metrics.get('precision', 0.0),
+        "test/recall":       test_metrics.get('recall', 0.0),
+    }
+
+    if not is_multiclass:
+        log_dict["test/specificity"] = test_metrics.get('specificity', 0.0)
+        log_dict["test/npv"] = test_metrics.get('negative_predictive_value', 0.0)
+    else:
+        log_dict["test/f1_macro"] = test_metrics.get('f1_macro', 0.0)
+
+    if cm_fig is not None:
+        log_dict["test/confusion_matrix"] = wandb.Image(cm_fig)
+
+    if roc_fig is not None:
+        log_dict["test/roc_curve"] = wandb.Image(roc_fig)
+
+    if class_names:
+        per_class_table = create_per_class_metrics_table(test_metrics, class_names)
+        log_dict["test/per_class_metrics"] = per_class_table
+
+    scalar_rows = [
+        [k.replace("test/", ""), f"{v:.4f}" if isinstance(v, float) else str(v)]
+        for k, v in log_dict.items()
+        if isinstance(v, (int, float))
+    ]
+    if scalar_rows:
+        log_dict["test/summary_table"] = wandb.Table(
+            columns=["Metric", "Value"],
+            data=scalar_rows
+        )
+
+    wandb.log(log_dict)
+
+def create_per_class_metrics_table(best_metrics: Dict, class_names: List[str]) -> wandb.Table:
+    precision_pc = best_metrics.get('precision_per_class', [])
+    recall_pc    = best_metrics.get('recall_per_class', [])
+    f1_pc        = best_metrics.get('f1_per_class', [])
+    support_pc   = best_metrics.get('support_per_class', [])
+
+    data = [
+        [
+            name,
+            f"{precision_pc[i] * 100:.2f}%" if i < len(precision_pc) else "N/A",
+            f"{recall_pc[i] * 100:.2f}%"    if i < len(recall_pc)    else "N/A",
+            f"{f1_pc[i] * 100:.2f}%"        if i < len(f1_pc)        else "N/A",
+            str(support_pc[i])              if i < len(support_pc)   else "N/A",
+        ]
+        for i, name in enumerate(class_names)
+    ]
+
+    return wandb.Table(
+        columns=['Class', 'Precision', 'Recall', 'F1-Score', 'Support'],
+        data=data
+    )
 
 def init_wandb_run(
         project_name: str,
@@ -46,9 +178,7 @@ def init_wandb_run(
         directory: Optional[str] = None
 ) -> Optional[wandb.Run]:
     load_dotenv()
-
     api_key = os.getenv('WANDB_API_KEY')
-
     os.environ['WANDB_SILENT'] = 'true'
     os.environ['WANDB_CONSOLE'] = 'off'
 
@@ -59,7 +189,6 @@ def init_wandb_run(
     try:
         if not wandb.api.api_key:
             wandb.login(key=api_key, relogin=False)
-
     except Exception as e:
         print(f"\nErro ao fazer login no WandB: {e}")
         return None
@@ -82,352 +211,15 @@ def init_wandb_run(
             save_code=save_code,
             dir=directory
         )
-
-        print(f"\nW&B run inicializado: {run.name}")
+        print(f"\nW&B run: {run.name}")
         print(f"  URL: {run.url}")
-        print(f"  Project: {project_name}")
-        if entity:
-            print(f"  Entity: {entity}")
+        print(f"  Project: {project_name} | Group: {group}")
         print()
-
         return run
-
     except Exception as e:
         print(f"\nErro ao inicializar WandB run: {e}")
         print("Continuando sem logging do WandB...\n")
         return None
-
-def initialize_wandb_tracking(training_results: Dict, hyperparameters: dict,
-                              optimizer: torch.optim.Optimizer,
-                              criterion: nn.Module,
-                              use_gradient_clipping: bool,
-                              max_grad_norm: float) -> Tuple[bool, Optional[object]]:
-    if not training_results.get('wandb_enabled', False):
-        return False, None
-
-    config = training_results.get('config', {})
-    architecture_name = hyperparameters['architecture_name']
-    model_type = training_results.get('model_type', 'Binário')
-    class_names = training_results.get('class_names', [])
-    save_path = training_results.get('save_path', '.')
-
-    logging_config = config.get('logging', {}).get('wandb', {})
-    wandb_project = logging_config.get('project', 'final_training')
-    wandb_entity = logging_config.get('entity', None)
-
-    run_name = f"{architecture_name}_evaluation_{model_type.lower()}"
-    wandb_dir = os.path.join(save_path, 'wandb_logs')
-
-    run = init_wandb_run(
-        project_name=wandb_project,
-        run_name=run_name,
-        config={
-            "model_type": model_type,
-            "num_classes": len(class_names),
-            "class_names": class_names,
-            "optimizer": optimizer.__class__.__name__,
-            "criterion": criterion.__class__.__name__,
-            "use_gradient_clipping": use_gradient_clipping,
-            "max_grad_norm": max_grad_norm if use_gradient_clipping else None,
-            **hyperparameters
-        },
-        entity=wandb_entity,
-        tags=["evaluation", architecture_name, model_type.lower()],
-        group=f"{architecture_name}_eval_{model_type.lower()}",
-        save_code=False,
-        directory=wandb_dir
-    )
-
-    if run is None:
-        print("Falha ao inicializar W&B. Continuando sem logging.\n")
-        return False, None
-
-    return True, run
-
-def log_confusion_matrix_figure(
-        fig,
-        key: str = "confusion_matrix",
-        step: Optional[int] = None
-):
-    if wandb.run is not None:
-        wandb.log({key: wandb.Image(fig)}, step=step)
-
-def log_roc_curve_figure(
-        fig,
-        key: str = "roc_curve",
-        step: Optional[int] = None
-):
-    if wandb.run is not None:
-        wandb.log({key: wandb.Image(fig)}, step=step)
-
-def create_repetition_summary_table(
-        repetition_results: List[Dict],
-        aggregated: Dict,
-        is_multiclass: bool = False
-) -> wandb.Table:
-    repetition_summary_data = []
-
-    for i, rep_result in enumerate(repetition_results):
-        best_m = rep_result.get('best_metrics', {})
-
-        if not is_multiclass:
-            repetition_summary_data.append({
-                'Repetition': str(i + 1),
-                'Balanced Acc': f"{best_m.get('balanced_accuracy', 0.0) * 100:.2f}%",
-                'Accuracy': f"{best_m.get('accuracy', 0.0) * 100:.2f}%",
-                'F1-Score': f"{rep_result.get('best_f1_score', 0.0) * 100:.2f}%",
-                'Specificity': f"{best_m.get('specificity', 0.0) * 100:.2f}%",
-                'Precision': f"{best_m.get('precision', 0.0) * 100:.2f}%",
-                'Recall': f"{best_m.get('recall', 0.0) * 100:.2f}%",
-                'MCC': f"{best_m.get('matthews_correlation_coefficient', 0.0):.4f}",
-                'Val Loss': f"{best_m.get('val_loss', 0.0):.4f}",
-            })
-        else:
-            repetition_summary_data.append({
-                'Repetition': str(i + 1),
-                'Balanced Acc': f"{best_m.get('balanced_accuracy', 0.0) * 100:.2f}%",
-                'Accuracy': f"{best_m.get('accuracy', 0.0) * 100:.2f}%",
-                'F1 (Weighted)': f"{rep_result.get('best_f1_score', 0.0) * 100:.2f}%",
-                'F1 (Macro)': f"{best_m.get('f1_macro', 0.0) * 100:.2f}%",
-                'Precision (W)': f"{best_m.get('precision', 0.0) * 100:.2f}%",
-                'Recall (W)': f"{best_m.get('recall', 0.0) * 100:.2f}%",
-                'MCC': f"{best_m.get('matthews_correlation_coefficient', 0.0):.4f}",
-                'Val Loss': f"{best_m.get('val_loss', 0.0):.4f}",
-            })
-
-    if aggregated:
-        if not is_multiclass:
-            aggregated_row = {
-                'Repetition': 'MÉDIA',
-                'Balanced Acc': f"{aggregated['mean_balanced_accuracy'] * 100:.2f}% +- {aggregated['std_balanced_accuracy'] * 100:.2f}%",
-                'Accuracy': f"{aggregated['mean_accuracy'] * 100:.2f}% +- {aggregated['std_accuracy'] * 100:.2f}%",
-                'F1-Score': f"{aggregated['mean_f1'] * 100:.2f}% +- {aggregated['std_f1'] * 100:.2f}%",
-                'Specificity': f"{aggregated['mean_specificity'] * 100:.2f}% +- {aggregated['std_specificity'] * 100:.2f}%",
-                'Precision': f"{aggregated['mean_precision'] * 100:.2f}% +- {aggregated['std_precision'] * 100:.2f}%",
-                'Recall': f"{aggregated['mean_recall'] * 100:.2f}% +- {aggregated['std_recall'] * 100:.2f}%",
-                'MCC': f"{aggregated['mean_mcc']:.4f} +- {aggregated['std_mcc']:.4f}",
-                'Val Loss': f"{aggregated['mean_loss']:.4f} +- {aggregated['std_loss']:.4f}",
-            }
-        else:
-            aggregated_row = {
-                'Repetition': 'MÉDIA',
-                'Balanced Acc': f"{aggregated['mean_balanced_accuracy'] * 100:.2f}% +- {aggregated['std_balanced_accuracy'] * 100:.2f}%",
-                'Accuracy': f"{aggregated['mean_accuracy'] * 100:.2f}% +- {aggregated['std_accuracy'] * 100:.2f}%",
-                'F1 (Weighted)': f"{aggregated['mean_f1'] * 100:.2f}% +- {aggregated['std_f1'] * 100:.2f}%",
-                'F1 (Macro)': f"{aggregated.get('mean_f1_macro', 0.0) * 100:.2f}% +- {aggregated.get('std_f1_macro', 0.0) * 100:.2f}%",
-                'Precision (W)': f"{aggregated['mean_precision'] * 100:.2f}% +- {aggregated['std_precision'] * 100:.2f}%",
-                'Recall (W)': f"{aggregated['mean_recall'] * 100:.2f}% +- {aggregated['std_recall'] * 100:.2f}%",
-                'MCC': f"{aggregated['mean_mcc']:.4f} +- {aggregated['std_mcc']:.4f}",
-                'Val Loss': f"{aggregated['mean_loss']:.4f} +- {aggregated['std_loss']:.4f}",
-            }
-
-        repetition_summary_data.append(aggregated_row)
-
-    table = wandb.Table(
-        columns=list(repetition_summary_data[0].keys()),
-        data=[list(row.values()) for row in repetition_summary_data]
-    )
-
-    return table
-
-def create_detailed_metrics_table(
-        best_metrics: Dict,
-        is_multiclass: bool = False
-) -> wandb.Table:
-    if not is_multiclass:
-        detailed_metrics_data = [
-            {
-                'Metric': 'Balanced Accuracy',
-                'Value': f"{best_metrics.get('balanced_accuracy', 0.0) * 100:.2f}%",
-                'Description': 'Média de Sensitivity e Specificity'
-            },
-            {
-                'Metric': 'Accuracy',
-                'Value': f"{best_metrics.get('accuracy', 0.0) * 100:.2f}%",
-                'Description': 'Acertos totais'
-            },
-            {
-                'Metric': 'Sensitivity (Recall)',
-                'Value': f"{best_metrics.get('recall', 0.0) * 100:.2f}%",
-                'Description': 'Detecta Demented (TPR)'
-            },
-            {
-                'Metric': 'Specificity',
-                'Value': f"{best_metrics.get('specificity', 0.0) * 100:.2f}%",
-                'Description': 'Detecta Non Demented (TNR)'
-            },
-            {
-                'Metric': 'Precision',
-                'Value': f"{best_metrics.get('precision', 0.0) * 100:.2f}%",
-                'Description': 'Se prediz Demented, acerta X%'
-            },
-            {
-                'Metric': 'Negative Predictive Value',
-                'Value': f"{best_metrics.get('negative_predictive_value', 0.0) * 100:.2f}%",
-                'Description': 'Se prediz Non Demented, acerta X%'
-            },
-            {
-                'Metric': 'F1-Score',
-                'Value': f"{best_metrics.get('f1_score', 0.0) * 100:.2f}%",
-                'Description': 'Harmônica de Precision e Recall'
-            },
-            {
-                'Metric': 'MCC',
-                'Value': f"{best_metrics.get('matthews_correlation_coefficient', 0.0):.4f}",
-                'Description': 'Matthews Correlation Coef (-1 a 1)'
-            },
-            {
-                'Metric': "Cohen's Kappa",
-                'Value': f"{best_metrics.get('cohen_kappa', 0.0):.4f}",
-                'Description': 'Concordância considerando chance'
-            },
-        ]
-    else:
-        detailed_metrics_data = [
-            {
-                'Metric': 'Balanced Accuracy',
-                'Value': f"{best_metrics.get('balanced_accuracy', 0.0) * 100:.2f}%",
-                'Description': 'Média balanceada entre classes'
-            },
-            {
-                'Metric': 'Accuracy',
-                'Value': f"{best_metrics.get('accuracy', 0.0) * 100:.2f}%",
-                'Description': 'Acertos totais'
-            },
-            {
-                'Metric': 'F1-Score (Weighted)',
-                'Value': f"{best_metrics.get('f1_score', 0.0) * 100:.2f}%",
-                'Description': 'F1 ponderado pela distribuição'
-            },
-            {
-                'Metric': 'F1-Score (Macro)',
-                'Value': f"{best_metrics.get('f1_macro', 0.0) * 100:.2f}%",
-                'Description': 'F1 média simples entre classes'
-            },
-            {
-                'Metric': 'Precision (Weighted)',
-                'Value': f"{best_metrics.get('precision', 0.0) * 100:.2f}%",
-                'Description': 'Precision ponderada'
-            },
-            {
-                'Metric': 'Precision (Macro)',
-                'Value': f"{best_metrics.get('precision_macro', 0.0) * 100:.2f}%",
-                'Description': 'Precision média entre classes'
-            },
-            {
-                'Metric': 'Recall (Weighted)',
-                'Value': f"{best_metrics.get('recall', 0.0) * 100:.2f}%",
-                'Description': 'Recall ponderado'
-            },
-            {
-                'Metric': 'Recall (Macro)',
-                'Value': f"{best_metrics.get('recall_macro', 0.0) * 100:.2f}%",
-                'Description': 'Recall médio entre classes'
-            },
-            {
-                'Metric': 'MCC',
-                'Value': f"{best_metrics.get('matthews_correlation_coefficient', 0.0):.4f}",
-                'Description': 'Matthews Correlation Coef (-1 a 1)'
-            },
-            {
-                'Metric': "Cohen's Kappa",
-                'Value': f"{best_metrics.get('cohen_kappa', 0.0):.4f}",
-                'Description': 'Concordância considerando chance'
-            },
-        ]
-
-    table = wandb.Table(
-        columns=['Metric', 'Value', 'Description'],
-        data=[[row['Metric'], row['Value'], row['Description']] for row in detailed_metrics_data]
-    )
-
-    return table
-
-def create_per_class_metrics_table(
-        best_metrics: Dict,
-        class_names: List[str]
-) -> wandb.Table:
-    per_class_data = []
-
-    precision_per_class = best_metrics.get('precision_per_class', [])
-    recall_per_class = best_metrics.get('recall_per_class', [])
-    f1_per_class = best_metrics.get('f1_per_class', [])
-    support_per_class = best_metrics.get('support_per_class', [])
-
-    for i, class_name in enumerate(class_names):
-        per_class_data.append({
-            'Class': class_name,
-            'Precision': f"{precision_per_class[i] * 100:.2f}%" if i < len(precision_per_class) else "N/A",
-            'Recall': f"{recall_per_class[i] * 100:.2f}%" if i < len(recall_per_class) else "N/A",
-            'F1-Score': f"{f1_per_class[i] * 100:.2f}%" if i < len(f1_per_class) else "N/A",
-            'Support': str(support_per_class[i]) if i < len(support_per_class) else "N/A"
-        })
-
-    table = wandb.Table(
-        columns=['Class', 'Precision', 'Recall', 'F1-Score', 'Support'],
-        data=[[row['Class'], row['Precision'], row['Recall'], row['F1-Score'], row['Support']]
-              for row in per_class_data]
-    )
-
-    return table
-
-def summarize_wandb_repetitions(
-        repetition_results: List[Dict],
-        params: Dict,
-        idx: int,
-        is_multiclass: bool = False,
-        class_names: Optional[List[str]] = None
-) -> Dict:
-    aggregated = aggregate_repetition_metrics(repetition_results, is_multiclass)
-
-    repetition_summary_table = create_repetition_summary_table(
-        repetition_results,
-        aggregated,
-        is_multiclass
-    )
-
-    val_f1_scores = [r['best_f1_score'] for r in repetition_results]
-    best_rep_idx = np.argmax(val_f1_scores)
-    best_rep_metrics = repetition_results[best_rep_idx]['best_metrics']
-
-    detailed_metrics_table = create_detailed_metrics_table(
-        best_rep_metrics,
-        is_multiclass
-    )
-
-    log_dict = {
-        "tables/repetition_summary": repetition_summary_table,
-        "tables/detailed_metrics": detailed_metrics_table,
-    }
-
-    if is_multiclass and class_names:
-        per_class_table = create_per_class_metrics_table(
-            best_rep_metrics,
-            class_names
-        )
-        log_dict["tables/per_class_metrics"] = per_class_table
-
-    if wandb.run is not None:
-        wandb.log(log_dict)
-
-    result = {
-        'params': params,
-        'combination_index': idx,
-        'aggregated': aggregated,
-        'n_successful_repetitions': len(repetition_results),
-        'best_repetition_index': int(best_rep_idx),
-        'best_repetition_f1_score': float(val_f1_scores[best_rep_idx])
-    }
-
-    print(f"\nResultados agregados e logados no W&B")
-    print(f"  Mean F1: {aggregated['mean_f1'] * 100:.2f}% +- {aggregated['std_f1'] * 100:.2f}%")
-    print(
-        f"  Mean Balanced Acc: {aggregated['mean_balanced_accuracy'] * 100:.2f}% +- {aggregated['std_balanced_accuracy'] * 100:.2f}%")
-
-    if is_multiclass and 'mean_f1_macro' in aggregated:
-        print(f"  Mean F1 (Macro): {aggregated['mean_f1_macro'] * 100:.2f}% +- {aggregated['std_f1_macro'] * 100:.2f}%")
-
-    return result
 
 def finish_wandb_run(quiet: bool = True):
     try:
