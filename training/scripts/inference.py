@@ -2,94 +2,109 @@ import os
 import argparse
 import sys
 from pathlib import Path
+import torch
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from src.evaluation import run_full_inference_pipeline
+from src.models.evaluation import Evaluation
+from src.utils import print_banner, print_section, get_pytorch_device
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_EXPERIMENTS_PATH = str(BASE_DIR / 'shared/logs/experiments')
-DEFAULT_DATA_PATH = str(BASE_DIR / 'shared/data')
-DEFAULT_MODELS_PATH = str(BASE_DIR / 'shared/models')
+DEFAULT_OUTPUT_PATH = str(BASE_DIR / 'shared/inference_outputs')
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Treinamento final com melhores hiperparâmetros + avaliação no test set",
+        description="Ferramenta de Diagnóstico Alzheimer (Produção)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
                 Exemplos de uso:
-                  # Treinamento + avaliação binário com Grad-CAM
-                  python scripts/inference.py --model_type binary --generate_gradcam
-                
-                # Treinamento + avaliação multiclasse com 15 amostras Grad-CAM
-                  python scripts/inference.py --model_type multiclass --generate_gradcam --gradcam_samples 15
-                
-                # Com caminhos personalizados
-                  python scripts/inference.py --model_type binary --experiments_path /custom/path
+                # Diagnóstico de uma única imagem (fatia) com Grad-CAM
+                python scripts/inference.py --image "shared/data/test_sample.jpg" --gradcam
+
+                # Diagnóstico de um paciente completo (pasta com várias fatias)
+                python scripts/inference.py --subject "shared/data/splits/binary/test/Demented/subject_123"
+
+                # Forçar uso de CPU
+                python scripts/inference.py --image "img.jpg" --cpu
                """
     )
 
-    parser.add_argument(
-        '--model_type',
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
+        '--image',
         type=str,
-        default='binary',
-        choices=['binary', 'multiclass'],
-        help="Tipo do modelo: 'binary' ou 'multiclass' (padrão: binary)"
+        help="Caminho para uma única imagem JPG/PNG"
+    )
+    group.add_argument(
+        '--subject',
+        type=str,
+        help="Caminho para uma pasta contendo fatias de um sujeito"
+    )
+
+
+    parser.add_argument(
+        '--output_path',
+        type=str,
+        default=DEFAULT_OUTPUT_PATH,
+        help=f"Caminho para salvar resultados/Grad-CAM (padrão: {DEFAULT_OUTPUT_PATH})"
     )
 
     parser.add_argument(
-        '--experiments_path',
-        type=str,
-        default=DEFAULT_EXPERIMENTS_PATH,
-        help=f"Caminho base dos experimentos do grid search (padrão: {DEFAULT_EXPERIMENTS_PATH})"
-    )
-
-    parser.add_argument(
-        '--data_path',
-        type=str,
-        default=DEFAULT_DATA_PATH,
-        help=f"Caminho dos dados (padrão: {DEFAULT_DATA_PATH})"
-    )
-
-    parser.add_argument(
-        '--models_path',
-        type=str,
-        default=DEFAULT_MODELS_PATH,
-        help=f"Caminho para salvar modelos finais (padrão: {DEFAULT_MODELS_PATH})"
-    )
-
-    parser.add_argument(
-        '--generate_gradcam',
+        '--gradcam',
         action='store_true',
-        help="Gerar visualizações Grad-CAM"
+        help="Gerar visualizações Grad-CAM para explicar o diagnóstico"
     )
 
     parser.add_argument(
-        '--gradcam_samples',
-        type=int,
-        default=10,
-        help="Número de amostras Grad-CAM (padrão: 10)"
+        '--cpu',
+        action='store_true',
+        help="Forçar execução em CPU"
     )
 
     return parser.parse_args()
 
 def main():
     args = parse_arguments()
+    
+    print_banner("SISTEMA DE DIAGNÓSTICO ALZHEIMER", "IA de Produção - Diagnóstico em Cascata")
+
+    device = torch.device('cpu') if args.cpu else get_pytorch_device()
+    print(f"Executando em: {device}\n")
 
     try:
-        run_full_inference_pipeline(
-            model_type=args.model_type,
-            experiments_path=args.experiments_path,
-            data_path=args.data_path,
-            models_path=args.models_path,
-            generate_gradcam=args.generate_gradcam,
-            gradcam_samples=args.gradcam_samples
-        )
-    except KeyboardInterrupt:
-        print("\n\nExecução interrompida pelo usuário.\n")
-        sys.exit(130)
+        print_section("CARREGANDO MODELOS")
+        evaluator = Evaluation(device=device)
+        evaluator.load_models()
+
+        print_section("PROCESSANDO DIAGNÓSTICO")
+        
+        if args.image:
+            print(f"Alvo: Imagem Única -> {os.path.basename(args.image)}")
+            result = evaluator.predict_image(args.image)
+
+            if args.gradcam:
+                evaluator.generate_gradcam(args.image, args.output_path)
+        else:
+            print(f"Alvo: Sujeito Completo -> {os.path.basename(args.subject)}")
+            result = evaluator.predict_subject_folder(args.subject)
+            
+            if args.gradcam:
+                for f in os.listdir(args.subject):
+                    if f.lower().endswith(('.png', '.jpg', '.jpeg')):
+                        evaluator.generate_gradcam(os.path.join(args.subject, f), args.output_path)
+                        break
+
+        evaluator.print_prediction(result)
+        
+        print_section("CONCLUÍDO")
+        if args.gradcam:
+            print(f"Visualizações Grad-CAM disponíveis em: {args.output_path}\n")
+        
+    except FileNotFoundError as e:
+        print(f"\n[ERRO] Arquivo ou diretório não encontrado: {e}")
+        sys.exit(1)
     except Exception as e:
-        print(f"\n\nErro crítico durante execução: {str(e)}\n")
+        print(f"\n[ERRO CRÍTICO] Ocorreu uma falha durante o diagnóstico:\n{str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":

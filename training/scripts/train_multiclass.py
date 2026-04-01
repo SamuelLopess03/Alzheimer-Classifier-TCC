@@ -4,8 +4,8 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from src.training import run_training_flow
-from src.evaluation import run_full_inference_pipeline
+from src.training import run_training_flow, run_final_training_flow
+from src.evaluation import run_inference_pipeline
 from src.utils import run_pipeline, print_banner
 from scripts.prepare_data import prepare_data
 
@@ -16,21 +16,29 @@ DEFAULT_MODELS_PATH = str(BASE_DIR / 'shared/models')
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Pipeline de treinamento do modelo multiclasse para níveis de demência",
+        description="Pipeline de treinamento do modelo multiclasse para estagiamento de Alzheimer",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
                     Exemplos de uso:
                       # Pipeline completa (todas as etapas)
                       python scripts/train_multiclass.py
                     
-                      # Apenas treinamento
-                      python scripts/train_multiclass.py --train
+                      # Apenas busca de hiperparâmetros
+                      python scripts/train_multiclass.py --grid-search
+                      
+                      # Apenas treinamento final de produção
+                      python scripts/train_multiclass.py --train-final
+                      
+                      # Apenas inferência
+                      python scripts/train_multiclass.py --inference
                """
     )
 
     parser.add_argument('--prepare-data', action='store_true', help="Executar preparação de dados")
-    parser.add_argument('--train', action='store_true', help="Executar treinamento do modelo")
-    parser.add_argument('--inference', action='store_true', help="Executar inferência final")
+    parser.add_argument('--grid-search', action='store_true', help="Executar busca de hiperparâmetros")
+    parser.add_argument('--train-final', action='store_true', help="Executar treinamento final de produção")
+    parser.add_argument('--train', action='store_true', help="Atalho para --grid-search + --train-final")
+    parser.add_argument('--inference', action='store_true', help="Executar inferência final e relatórios")
     
     parser.add_argument('--data-path', type=str, default=DEFAULT_DATA_PATH)
     parser.add_argument('--experiments-path', type=str, default=DEFAULT_EXPERIMENTS_PATH)
@@ -43,28 +51,35 @@ def parse_arguments() -> argparse.Namespace:
 def main():
     args = parse_arguments()
 
+    if args.train:
+        args.grid_search = True
+        args.train_final = True
+
     step_descriptions = {
         'prepare_data': 'Preparação de Dados',
-        'train': 'Treinamento do Modelo Multiclasse',
+        'grid_search': 'Busca de Hiperparâmetros (Grid Search)',
+        'train_final': 'Treinamento Final de Produção',
         'inference': 'Inferência Final + Grad-CAM'
     }
 
     step_functions = {
         'prepare_data': lambda: (prepare_data() or True),
-        'train': lambda: run_training_flow('multiclass', args.data_path),
-        'inference': lambda: (run_full_inference_pipeline(
-            'multiclass', args.experiments_path, args.data_path, args.models_path, 
+        'grid_search': lambda: run_training_flow('multiclass', args.data_path),
+        'train_final': lambda: run_final_training_flow('multiclass', args.experiments_path, args.data_path),
+        'inference': lambda: (run_inference_pipeline(
+            'multiclass', args.data_path, args.models_path, args.experiments_path,
             args.generate_gradcam, args.gradcam_samples
         ) or True)
     }
 
     pipeline_steps = []
     if args.prepare_data: pipeline_steps.append('prepare_data')
-    if args.train: pipeline_steps.append('train')
+    if args.grid_search: pipeline_steps.append('grid_search')
+    if args.train_final: pipeline_steps.append('train_final')
     if args.inference: pipeline_steps.append('inference')
 
     if not pipeline_steps:
-        pipeline_steps = ['prepare_data', 'train', 'inference']
+        pipeline_steps = ['prepare_data', 'grid_search', 'train_final', 'inference']
 
     try:
         exit_code = run_pipeline(
