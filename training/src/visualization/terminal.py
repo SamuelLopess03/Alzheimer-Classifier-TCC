@@ -13,6 +13,27 @@ def print_section(title: str):
     print(f"{title}")
     print(f"{'-' * 60}\n")
 
+def print_repetition_summary(aggregated: Dict[str, Any], index: int):
+    print(f"\nAgregação da Combinação #{index + 1}")
+    print(f"  {'Metric':<20} | {'Mean':<10} | {'Std':<10}")
+    print(f"  {'-' * 45}")
+    
+    metrics_to_show = [
+        ('F1-Score', 'mean_f1', 'std_f1'),
+        ('Balanced Acc', 'mean_balanced_accuracy', 'std_balanced_accuracy'),
+        ('Loss', 'mean_loss', 'std_loss')
+    ]
+    
+    for label, mean_key, std_key in metrics_to_show:
+        mean_val = aggregated.get(mean_key, 0.0)
+        std_val = aggregated.get(std_key, 0.0)
+        
+        if 'loss' in mean_key.lower():
+            print(f"  {label:<20} | {mean_val:<10.4f} | {std_val:<10.4f}")
+        else:
+            print(f"  {label:<20} | {mean_val*100:<9.2f}% | {std_val*100:<9.2f}%")
+    print(f"  {'-' * 45}\n")
+
 def print_class_distribution(train_dataset: Any, class_names: List[str]):
     labels = [label for _, label in train_dataset.samples]
     class_dist = Counter(labels)
