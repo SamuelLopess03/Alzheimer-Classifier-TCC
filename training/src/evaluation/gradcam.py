@@ -12,7 +12,7 @@ from typing import Dict, List, Optional
 
 from ..models import get_target_layer
 from ..data import denormalize_images
-from ..utils import load_hyperparameters_config
+from src.utils.config import load_hyperparameters_config
 
 def _collect_class_samples(
     test_loader: DataLoader, 

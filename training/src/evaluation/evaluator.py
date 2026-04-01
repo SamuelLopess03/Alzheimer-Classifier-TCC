@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from ..training import validation_epoch
 from ..visualization import log_inference_results
 from ..data import StaticPreprocessedDataset, get_subject_ids_from_dataset
-from ..utils import load_hyperparameters_config
+from src.utils.config import load_hyperparameters_config
 
 from .metrics import evaluate_performance
 from .reporter import print_test_metrics_summary, generate_visual_reports, close_visual_reports

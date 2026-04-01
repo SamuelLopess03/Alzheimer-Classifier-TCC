@@ -7,11 +7,12 @@ from pathlib import Path
 from PIL import Image
 from torchvision import transforms
 
-from ..utils import (
+from src.utils.config import (
     load_binary_config, 
     load_multiclass_config, 
     load_hyperparameters_config
 )
+from src.utils.hardware import get_pytorch_device
 from .architectures import create_model
 from ..data import denormalize_images
 from ..evaluation.gradcam import run_single_gradcam

@@ -14,7 +14,7 @@ from ..models import (
 )
 from .factory import get_training_config, generate_random_combinations
 from .trainer import run_training_process
-from ..utils import load_hyperparameters_config
+from src.utils.config import load_hyperparameters_config
 from ..evaluation import calculate_combined_score
 from ..visualization import (
     init_wandb_run, 

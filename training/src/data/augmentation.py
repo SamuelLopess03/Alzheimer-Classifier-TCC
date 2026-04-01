@@ -2,7 +2,7 @@ import albumentations as alb
 from albumentations.pytorch import ToTensorV2
 
 from .preprocessing import MedicalImagePreprocessor
-from ..utils import load_augmentation_config
+from src.utils.config import load_augmentation_config
 
 _TRANSFORMER_ARCHS = {'vit_b_16', 'swin_v2_tiny'}
 

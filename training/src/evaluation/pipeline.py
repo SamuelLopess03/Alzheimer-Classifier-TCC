@@ -7,16 +7,16 @@ from torchvision import datasets as tv_datasets
 
 from ..models.architectures import create_model_with_architecture
 from .evaluator import evaluate_model
-from ..utils import (
-    get_pytorch_device, 
-    print_banner, 
-    print_section,
-    find_best_experiment,
-    extract_best_hyperparameters,
+from src.utils.hardware import get_pytorch_device
+from src.visualization.terminal import print_banner, print_section, print_detailed_metrics
+from src.utils.config import (
     load_binary_config,
-    load_multiclass_config
+    load_multiclass_config,
+    load_hyperparameters_config,
+    LOGS_PATH
 )
-from ..visualization import print_detailed_metrics, init_wandb_run, finish_wandb_run
+from src.utils.experiments import find_best_experiment, extract_best_hyperparameters
+from ..visualization import init_wandb_run, finish_wandb_run
 
 def load_test_dataset(data_path: str, model_type: str) -> tv_datasets.ImageFolder:
     test_path = os.path.join(data_path, f'splits/{model_type}/test')

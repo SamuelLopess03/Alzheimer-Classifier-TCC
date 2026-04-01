@@ -1,12 +1,13 @@
 import sys
 import argparse
+import time
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from src.training import run_training_flow, run_final_training_flow
 from src.evaluation import run_inference_pipeline
-from src.utils import run_pipeline, print_banner
+from src.visualization.terminal import print_banner, print_section
 from scripts.prepare_data import prepare_data
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -57,41 +58,80 @@ def main():
 
     step_descriptions = {
         'prepare_data': 'Preparação de Dados',
-        'grid_search': 'Busca de Hiperparâmetros (Grid Search)',
+        'grid_search': 'Busca de Hiperparâmetros (Random Search)',
         'train_final': 'Treinamento Final de Produção',
         'inference': 'Inferência Final + Grad-CAM'
     }
 
-    step_functions = {
-        'prepare_data': lambda: (prepare_data() or True),
-        'grid_search': lambda: run_training_flow('binary', args.data_path),
-        'train_final': lambda: run_final_training_flow('binary', args.experiments_path, args.data_path),
-        'inference': lambda: (run_inference_pipeline(
-            'binary', args.data_path, args.models_path, args.experiments_path,
-            args.generate_gradcam, args.gradcam_samples
-        ) or True)
-    }
-
+    all_possible_steps = ['prepare_data', 'grid_search', 'train_final', 'inference']
     pipeline_steps = []
+    
     if args.prepare_data: pipeline_steps.append('prepare_data')
     if args.grid_search: pipeline_steps.append('grid_search')
     if args.train_final: pipeline_steps.append('train_final')
     if args.inference: pipeline_steps.append('inference')
 
     if not pipeline_steps:
-        pipeline_steps = ['prepare_data', 'grid_search', 'train_final', 'inference']
+        pipeline_steps = all_possible_steps
 
-    try:
-        exit_code = run_pipeline(
-            pipeline_name="TREINAMENTO BINÁRIO",
-            pipeline_steps=pipeline_steps,
-            step_descriptions=step_descriptions,
-            step_functions=step_functions
-        )
-        sys.exit(exit_code)
-    except KeyboardInterrupt:
-        print("\n\nPipeline interrompida pelo usuário.\n")
-        sys.exit(130)
+    print_banner("PIPELINE: TREINAMENTO BINÁRIO", "Alzheimer Detection System")
+    
+    pipeline_start_time = time.time()
+    steps_executed = []
+
+    print(f"Configurando pipeline: {len(pipeline_steps)} etapa(s)...\n")
+    for i, step in enumerate(pipeline_steps, 1):
+        print(f"  {i}. {step_descriptions[step]}")
+    print()
+
+    for i, step in enumerate(pipeline_steps, 1):
+        step_name = step_descriptions[step]
+        print_section(f"ETAPA {i}/{len(pipeline_steps)}: {step_name}")
+        
+        step_start_time = time.time()
+        success = False
+        
+        try:
+            if step == 'prepare_data':
+                success = (prepare_data() or True)
+            elif step == 'grid_search':
+                success = run_training_flow('binary', args.data_path)
+            elif step == 'train_final':
+                success = run_final_training_flow('binary', args.experiments_path, args.data_path)
+            elif step == 'inference':
+                success = (run_inference_pipeline(
+                    'binary', args.data_path, args.models_path, args.experiments_path,
+                    args.generate_gradcam, args.gradcam_samples
+                ) or True)
+        except KeyboardInterrupt:
+            print("\n\nPipeline interrompida pelo usuário.\n")
+            sys.exit(130)
+        except Exception as e:
+            print(f"\nErro inesperado na etapa '{step_name}': {str(e)}")
+            import traceback
+            traceback.print_exc()
+            success = False
+
+        step_duration = time.time() - step_start_time
+        steps_executed.append({'step': step_name, 'success': success})
+
+        if not success:
+            print_section("PIPELINE INTERROMPIDA POR FALHA")
+            break
+        
+        print_section("ETAPA CONCLUÍDA COM SUCESSO")
+
+    print_banner("RESUMO DA EXECUÇÃO")
+    successful = sum(1 for s in steps_executed if s['success'])
+    total_duration = time.time() - pipeline_start_time
+    
+    print(f"   Total planejado: {len(pipeline_steps)}")
+    print(f"   Executadas:      {len(steps_executed)}")
+    print(f"   Sucessos:        {successful}")
+    print(f"   Tempo Total:     {total_duration:.2f}s ({total_duration / 60:.2f} min)")
+    print(f"{'=' * 80}\n")
+
+    sys.exit(0 if successful == len(pipeline_steps) else 1)
 
 if __name__ == "__main__":
     main()

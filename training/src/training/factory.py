@@ -4,7 +4,7 @@ import itertools
 from torch.optim import lr_scheduler
 from typing import Dict, Optional, List, Tuple
 
-from ..utils import load_binary_config, load_multiclass_config
+from src.utils.config import load_binary_config, load_multiclass_config
 
 def get_training_config(is_multiclass: bool = False) -> Dict:
     if is_multiclass:

@@ -7,7 +7,7 @@ from sklearn.utils.class_weight import compute_class_weight
 
 from .builder_registry import model_registry
 from . import builders 
-from ..utils import load_hyperparameters_config
+from src.utils.config import load_hyperparameters_config
 
 def _handle_freezing(model: nn.Module, architecture_name: str, arch_cfg: Dict):
     freeze_backbone = arch_cfg.get('freeze_backbone', False)

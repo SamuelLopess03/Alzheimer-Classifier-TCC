@@ -10,7 +10,7 @@ from .builder import (
     prepare_dataset_multiclass
 )
 from .downloader import download_kaggle_dataset, validate_image_files
-from ..utils import print_banner, print_section
+from src.visualization.terminal import print_banner, print_section
 
 def verify_datasets(output_path: str) -> bool:
     datasets_to_verify = [

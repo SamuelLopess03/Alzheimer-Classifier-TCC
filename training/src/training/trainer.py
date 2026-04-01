@@ -11,7 +11,8 @@ from .factory import get_training_config, create_scheduler
 from ..data import DynamicAugmentationDataset, StaticPreprocessedDataset, get_subject_ids_from_dataset
 from ..evaluation import evaluate_performance
 from ..visualization import log_final_training_metrics
-from ..utils import load_hyperparameters_config, get_pytorch_device
+from src.utils.config import load_hyperparameters_config
+from src.utils.hardware import get_pytorch_device
 
 def save_best_checkpoint(model: nn.Module, optimizer: torch.optim.Optimizer,
                          epoch: int, val_f1: float, metrics: Dict,

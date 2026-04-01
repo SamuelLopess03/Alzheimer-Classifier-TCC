@@ -7,7 +7,8 @@ import torch
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from src.models.evaluation import Evaluation
-from src.utils import print_banner, print_section, get_pytorch_device
+from src.visualization.terminal import print_banner, print_section
+from src.utils.hardware import get_pytorch_device
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT_PATH = str(BASE_DIR / 'shared/inference_outputs')
