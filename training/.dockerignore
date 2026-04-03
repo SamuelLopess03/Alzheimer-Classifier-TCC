@@ -1,0 +1,11 @@
+shared/
+**/__pycache__/
+*.pyc
+.git/
+.env
+outputs/
+logs/
+checkpoint/
+datasets/
+splits/
+raw/

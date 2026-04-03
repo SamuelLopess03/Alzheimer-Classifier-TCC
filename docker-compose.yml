@@ -1,4 +1,17 @@
 services:
+  data-setup:
+    container_name: ia-alzheimer-setup
+    build:
+      context: ./training
+      dockerfile: Dockerfile.setup
+    image: model-alzheimer-setup:latest
+    volumes:
+      - ./shared:/app/shared
+      - ./training/kaggle.json:/app/kaggle.json:ro
+    command: ["python", "-m", "scripts.prepare_data"]
+    networks:
+      - alzheimer-network
+
   alzheimer-binary:
     container_name: ia-alzheimer-binary
     build:
@@ -6,6 +19,9 @@ services:
       dockerfile: Dockerfile.binary
     image: model-alzheimer-binary:latest
     runtime: nvidia
+    depends_on:
+      data-setup:
+        condition: service_completed_successfully
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - PYTHONUNBUFFERED=1
@@ -15,7 +31,8 @@ services:
     volumes:
       - ./shared:/app/shared
       - ./training/configs:/app/configs:ro
-    shm_size: '2gb'
+      - ./training/kaggle.json:/app/kaggle.json:ro
+    shm_size: '16gb'
     deploy:
       resources:
         reservations:
@@ -34,6 +51,9 @@ services:
       dockerfile: Dockerfile.multiclass
     image: model-alzheimer-multiclass:latest
     runtime: nvidia
+    depends_on:
+      data-setup:
+        condition: service_completed_successfully
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - PYTHONUNBUFFERED=1
@@ -43,7 +63,8 @@ services:
     volumes:
       - ./shared:/app/shared
       - ./training/configs:/app/configs:ro
-    shm_size: '2gb'
+      - ./training/kaggle.json:/app/kaggle.json:ro
+    shm_size: '16gb'
     deploy:
       resources:
         reservations:

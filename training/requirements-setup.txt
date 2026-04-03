@@ -1,0 +1,10 @@
+# REQUIREMENTS-SETUP.TXT - ALZHEIMER DETECTION (DATA SETUP ONLY)
+
+numpy>=1.26.0,<2.0.0
+Pillow>=11.0.0,<12.0.0
+kaggle>=1.7.4.5
+psutil>=6.1.0,<7.0.0
+pyyaml>=6.0.0,<7.0.0
+python-dotenv>=1.0.0,<2.0.0
+tqdm>=4.67.0,<5.0.0
+# scikit-learn não é mais necessário aqui pois usamos numpy.random

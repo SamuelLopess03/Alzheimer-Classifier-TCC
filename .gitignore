@@ -28,6 +28,7 @@ wheels/
 *.swo
 
 # Project specific
+/shared
 training/shared
 training/kaggle.json
 training/.env

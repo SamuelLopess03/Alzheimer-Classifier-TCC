@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM pytorch/pytorch:2.4.1-cuda12.4-cudnn9-runtime
 
 # Diretório de trabalho
 WORKDIR /app
@@ -9,19 +9,18 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONIOENCODING=utf-8
 
-# Instalar dependências do sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 libsm6 libxext6 libxrender-dev ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar apenas o requirements.txt primeiro
+# Copiar requisitos e instalar dependências (removendo torch redundante)
 COPY requirements.txt .
+RUN sed -i '/torch/d' requirements.txt && \
+    pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    rm -rf /root/.cache/pip
 
-# Atualizar pip e instalar dependências Python
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Copiar o restante do código
+# Copiar apenas o código-fonte (filtrado pelo .dockerignore)
 COPY . .
 
 # Expor porta (caso tenha API)
