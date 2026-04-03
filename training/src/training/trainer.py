@@ -8,28 +8,12 @@ from typing import Dict, Tuple, Optional
 
 from .engine import train_epoch, validation_epoch
 from .factory import get_training_config, create_scheduler
+from .checkpoints import save_best_checkpoint
 from ..data import DynamicAugmentationDataset, StaticPreprocessedDataset, get_subject_ids_from_dataset
 from ..evaluation import evaluate_performance
 from ..visualization import log_final_training_metrics
 from src.utils.config import load_hyperparameters_config
 from src.utils.hardware import get_pytorch_device
-
-def save_best_checkpoint(model: nn.Module, optimizer: torch.optim.Optimizer,
-                         epoch: int, val_f1: float, metrics: Dict,
-                         config: Dict, checkpoint_file: str,
-                         architecture_name: str, hyperparameters: Dict):
-    torch.save({
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-        'val_f1': val_f1,
-        'metrics': metrics,
-        'config': config,
-        'architecture_name': architecture_name,
-        'hyperparameters': hyperparameters,
-        'class_names': config['model']['class_names'],
-        'num_classes': config['model']['num_classes']
-    }, checkpoint_file)
 
 def run_training_process(
         model: nn.Module,
