@@ -8,7 +8,7 @@ from collections import Counter, defaultdict
 
 from .preprocessing import prepare_image_for_augmentation
 from .augmentation import get_alzheimer_grayscale_augmentation, create_synthetic_augmentation_for_minority
-from .subject_utils import extract_subject_id, extract_slice_index, count_unique_subjects, resolve_subset_labels
+from .subject_manager import extract_subject_id, extract_slice_index, count_unique_subjects, resolve_subset_labels
 from src.utils.config import load_augmentation_config
 
 class DynamicAugmentationDataset(Dataset):
