@@ -6,7 +6,7 @@ import torch
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from src.models.evaluation import Evaluation
+from src.models.inference import InferenceWrapper
 from src.visualization.terminal import print_banner, print_section
 from src.utils.hardware import get_pytorch_device
 
@@ -74,7 +74,7 @@ def main():
 
     try:
         print_section("CARREGANDO MODELOS")
-        evaluator = Evaluation(device=device)
+        evaluator = InferenceWrapper(device=device)
         evaluator.load_models()
 
         print_section("PROCESSANDO DIAGNÓSTICO")
