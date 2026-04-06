@@ -4,8 +4,6 @@ import seaborn as sns
 from typing import Dict, List, Optional
 from matplotlib.figure import Figure
 
-from ..evaluation import calculate_roc_metrics
-
 def _plot_base_confusion_matrix(
     cm: np.ndarray,
     class_names: List[str],
@@ -105,6 +103,7 @@ def plot_roc_curve(
     if figsize is None:
         figsize = (8, 6) if not is_multiclass else (10, 8)
         
+    from ..evaluation import calculate_roc_metrics
     roc_metrics = calculate_roc_metrics(y_true, y_pred_proba, is_multiclass=is_multiclass)
     fig, ax = plt.subplots(figsize=figsize)
 

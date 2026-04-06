@@ -11,7 +11,7 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 from typing import Dict, List, Optional
 
 from ..models import get_target_layer
-from ..data import denormalize_images
+from ..data.preprocessing import denormalize_images
 from src.utils.config import load_hyperparameters_config
 
 def _collect_class_samples(

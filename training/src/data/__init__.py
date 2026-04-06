@@ -1,51 +1,38 @@
-from .augmentation import (
-    DynamicAugmentationDataset,
-    get_transforms,
-    denormalize_images
-)
-
-from .dataset_wrappers import (
-    StaticPreprocessedDataset,
-    StratifiedSubjectSubset,
-    create_stratified_holdout_split,
-    augment_minority_class
-)
-
 from .subject_manager import (
     extract_subject_id,
     extract_slice_index,
     count_unique_subjects,
     get_subject_ids_from_dataset,
+    resolve_subset_labels,
     split_dataset_train_test,
-    DatasetMetadata
+    DatasetMetadata,
+    resolve_dataset_chain
 )
 
 from .pipeline import (
-    run_data_preparation_flow
+    run_data_preparation_flow,
+    generate_dataset_metadata
+)
+
+from .downloader import (
+    download_kaggle_dataset,
+    validate_image_files
 )
 
 __all__ = [
-    # Augmentation
-    "DynamicAugmentationDataset",
-    "get_transforms",
-    "denormalize_images",
-    
-    # Wrappers
-    "StaticPreprocessedDataset",
-    "StratifiedSubjectSubset",
-    
-    # Subject Management
+    # Subject Management (leve, sem dependências pesadas)
     "extract_subject_id",
     "extract_slice_index",
     "count_unique_subjects",
     "get_subject_ids_from_dataset",
+    "resolve_subset_labels",
     "split_dataset_train_test",
     "DatasetMetadata",
-    
-    # Split & Balancing
-    "create_stratified_holdout_split",
-    "augment_minority_class",
-    
-    # Pipeline
-    "run_data_preparation_flow"
+    "resolve_dataset_chain",
+
+    # Pipeline & Download (usados pelo container de setup)
+    "run_data_preparation_flow",
+    "generate_dataset_metadata",
+    "download_kaggle_dataset",
+    "validate_image_files",
 ]

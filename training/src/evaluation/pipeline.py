@@ -16,7 +16,7 @@ from src.utils.config import (
     LOGS_PATH
 )
 from src.utils.experiments import find_best_experiment, extract_best_hyperparameters
-from ..visualization import init_wandb_run, finish_wandb_run
+from ..visualization.wandb_logger import init_wandb_run, finish_wandb_run
 
 def load_test_dataset(data_path: str, model_type: str) -> tv_datasets.ImageFolder:
     test_path = os.path.join(data_path, f'splits/{model_type}/test')

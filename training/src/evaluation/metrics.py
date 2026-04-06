@@ -102,7 +102,9 @@ def evaluate_performance(
         subject_ids: List[str],
         class_names: Optional[List[str]] = None,
         val_loss: float = 0.0,
-        is_multiclass: bool = False
+        is_multiclass: bool = False,
+        repetition_number: int = 1,
+        epoch_number: int = 1
 ) -> Dict[str, Any]:
     if len(y_true) != len(subject_ids):
         raise ValueError(f"Dimensões incompatíveis: y_true ({len(y_true)}) != subject_ids ({len(subject_ids)})")
@@ -131,6 +133,8 @@ def evaluate_performance(
     error_metrics = _compute_base_error_metrics(cm, is_multiclass, y_subj_true, y_subj_pred)
     
     metrics = {
+        'repetition': int(repetition_number),
+        'epoch': int(epoch_number),
         'val_loss': float(val_loss),
         'accuracy': float(accuracy),
         'balanced_accuracy': float(balanced_acc),

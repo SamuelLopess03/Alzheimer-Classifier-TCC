@@ -3,17 +3,55 @@ import os
 from typing import Dict, List, Optional, Any
 from dotenv import load_dotenv
 
-def log_search_metrics(aggregated: Dict, combination_index: int):
-    if wandb.run is None:
+def log_search_repetition_progress(
+    repetition_results: List[Dict],
+    combination_index: int,
+    is_multiclass: bool
+):
+    if wandb.run is None or not repetition_results:
         return
 
-    wandb.log({
+    from ..evaluation import aggregate_repetition_metrics
+    aggregated = aggregate_repetition_metrics(repetition_results, is_multiclass)
+
+    wandb.run.summary.update({
+        "search/combination_index": combination_index,
+        "search/repetitions_done":  len(repetition_results)
+    })
+
+    metrics_to_log = {
         "search/f1":           aggregated.get('mean_f1', 0.0),
         "search/balanced_acc": aggregated.get('mean_balanced_accuracy', 0.0),
         "search/mcc":          aggregated.get('mean_mcc', 0.0),
         "search/val_loss":     aggregated.get('mean_loss', 0.0),
-        "search/combination":  combination_index,
-    })
+    }
+    wandb.log(metrics_to_log)
+
+    columns = ["Repetition", "F1", "Balanced Acc", "Accuracy", "MCC", "Loss"]
+    table_data = []
+    for res in repetition_results:
+        m = res.get('best_metrics', {})
+        table_data.append([
+            f"Rep {res['repetition']}",
+            round(m.get('f1_score', 0.0), 4),
+            round(m.get('balanced_accuracy', 0.0), 4),
+            round(m.get('accuracy', 0.0), 4),
+            round(m.get('matthews_correlation_coefficient', 0.0), 4),
+            round(m.get('val_loss', 0.0), 4)
+        ])
+
+    table_data.append([
+        "**AVERAGE**",
+        round(aggregated.get('mean_f1', 0.0), 4),
+        round(aggregated.get('mean_balanced_accuracy', 0.0), 4),
+        round(aggregated.get('mean_accuracy', 0.0), 4),
+        round(aggregated.get('mean_mcc', 0.0), 4),
+        round(aggregated.get('mean_loss', 0.0), 4)
+    ])
+
+    table = wandb.Table(columns=columns, data=table_data)
+    
+    wandb.log({"repetition_summary": table})
 
 def log_final_training_metrics(
         metrics: Dict,

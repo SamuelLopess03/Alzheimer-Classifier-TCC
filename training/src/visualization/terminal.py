@@ -90,3 +90,19 @@ def print_detailed_metrics(metrics: Dict[str, Any], class_names: List[str] = Non
             if i < len(f1_pc):
                 print(f"    {name:25s} | F1: {f1_pc[i]*100:>5.1f}% | Prec: {prec_pc[i]*100:>5.1f}% | Rec: {rec_pc[i]*100:>5.1f}%")
         print()
+
+def print_epoch_log(epoch: int, num_epochs: int, train_loss: float, metrics: Dict[str, Any], patience: int, is_best: bool = False):
+    val_loss = metrics.get('val_loss', 0.0)
+    val_f1 = metrics.get('f1_score', 0.0)
+    val_acc = metrics.get('accuracy', 0.0)
+    val_bacc = metrics.get('balanced_accuracy', 0.0)
+    
+    status_indicator = "[BEST]" if is_best else "      "
+    
+    print(f"| Epoch {epoch:03d}/{num_epochs:03d} "
+          f"Loss: {train_loss:.4f}/{val_loss:.4f} | "
+          f"F1: {val_f1*100:5.2f}% | "
+          f"Acc: {val_acc*100:5.2f}% | "
+          f"B.Acc: {val_bacc*100:5.2f}% | "
+          f"Patience: {patience:2d} | "
+          f"{status_indicator}")

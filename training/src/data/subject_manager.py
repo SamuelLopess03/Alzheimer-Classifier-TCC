@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 import numpy as np
-import pandas as pd
+import numpy as np
 from typing import Tuple, List, Dict, Optional, Any
 from collections import defaultdict
 
@@ -25,22 +25,22 @@ def resolve_dataset_chain(ds: Any, indices: Optional[np.ndarray] = None) -> Tupl
             new_indices = new_indices[curr_indices]
         return resolve_dataset_chain(curr.dataset, new_indices)
 
-    if hasattr(curr, 'original_dataset') and hasattr(curr, 'synthetic_indices'):
-        orig_len = len(curr.original_dataset)
-        base_ds, orig_base_indices = resolve_dataset_chain(curr.original_dataset, None)
+    if hasattr(curr, 'sampling_subset'):
+        sampling_subset = curr.sampling_subset
+        real_len = len(sampling_subset.indices)
         
         if curr_indices is None:
             curr_indices = np.arange(len(curr))
             
-        resolved_base_indices = []
+        resolved_indices = []
         for idx in curr_indices:
-            if idx < orig_len:
-                resolved_base_indices.append(orig_base_indices[idx])
+            if idx < real_len:
+                resolved_indices.append(sampling_subset.indices[idx])
             else:
-                synth_idx = idx - orig_len
-                resolved_base_indices.append(curr.synthetic_indices[synth_idx])
+                synth_idx = idx - real_len
+                resolved_indices.append(sampling_subset.synthetic_indices[synth_idx])
                 
-        return base_ds, np.array(resolved_base_indices)
+        return resolve_dataset_chain(sampling_subset.dataset, np.array(resolved_indices))
 
     if hasattr(curr, 'subset_dataset'):
         return resolve_dataset_chain(curr.subset_dataset, curr_indices)
@@ -92,14 +92,21 @@ class DatasetMetadata:
 
 def split_dataset_train_test(
         dataset_path: str, classes: List[str], train_ratio: float,
-        output_train_path: str, output_test_path: str, random_state: int = 42
+        output_train_path: str, output_test_path: str, random_state: int = 42,
+        workers: int = None
 ) -> Tuple[DatasetMetadata, DatasetMetadata]:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    if workers is None:
+        workers = min(32, max(4, (os.cpu_count() or 4) * 2))
+
     print(f"\nDividindo dataset: {int(train_ratio*100)}% Treino / {int((1-train_ratio)*100)}% Teste")
 
     subject_files = defaultdict(list)
     subjects_by_class = defaultdict(set)
     for cls in classes:
         p = os.path.join(dataset_path, cls)
+        if not os.path.exists(p):
+            continue
         for img in [f for f in os.listdir(p) if f.lower().endswith(('.jpg', '.jpeg'))]:
             sid = extract_subject_id(img)
             subjects_by_class[cls].add(sid)
@@ -114,14 +121,29 @@ def split_dataset_train_test(
         train_subjs.extend(subjs[:n_train])
         test_subjs.extend(subjs[n_train:])
 
-    for sid in train_subjs:
-        for cls, img in subject_files[sid]:
-            os.makedirs(os.path.join(output_train_path, cls), exist_ok=True)
-            shutil.copy(os.path.join(dataset_path, cls, img), os.path.join(output_train_path, cls, img))
-            
-    for sid in test_subjs:
-        for cls, img in subject_files[sid]:
-            os.makedirs(os.path.join(output_test_path, cls), exist_ok=True)
-            shutil.copy(os.path.join(dataset_path, cls, img), os.path.join(output_test_path, cls, img))
+    for cls in classes:
+        os.makedirs(os.path.join(output_train_path, cls), exist_ok=True)
+        os.makedirs(os.path.join(output_test_path, cls), exist_ok=True)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = []
+        for sid in train_subjs:
+            for cls, img in subject_files[sid]:
+                src = os.path.join(dataset_path, cls, img)
+                dst = os.path.join(output_train_path, cls, img)
+                futures.append(pool.submit(shutil.copyfile, src, dst))
+
+        for sid in test_subjs:
+            for cls, img in subject_files[sid]:
+                src = os.path.join(dataset_path, cls, img)
+                dst = os.path.join(output_test_path, cls, img)
+                futures.append(pool.submit(shutil.copyfile, src, dst))
+                
+        for future in as_completed(futures):
+            future.result()
+
+    train_count = sum(len(subject_files[sid]) for sid in train_subjs)
+    test_count  = sum(len(subject_files[sid]) for sid in test_subjs)
+    print(f"  Train: {train_count} imagens ({len(train_subjs)} sujeitos) | Test: {test_count} imagens ({len(test_subjs)} sujeitos)")
 
     return DatasetMetadata(output_train_path, classes), DatasetMetadata(output_test_path, classes)

@@ -1,6 +1,5 @@
 import platform
 import psutil
-import torch
 import copy
 from typing import Dict, Any, Optional, Set
 
@@ -20,7 +19,8 @@ def detect_environment() -> str:
         
     return "LOCAL_RTX3060" # Default para máquinas menores
 
-def get_pytorch_device() -> torch.device:
+def get_pytorch_device():
+    import torch
     if torch.cuda.is_available():
         env = detect_environment()
         device = torch.device('cuda')

@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from typing import Dict, Optional, List, Tuple
-from ..visualization import (
+from ..visualization.plots import (
     plot_confusion_matrix, 
     plot_roc_curve,
     close_figure

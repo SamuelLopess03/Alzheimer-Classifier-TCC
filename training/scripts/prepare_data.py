@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from src.data import run_data_preparation_flow
+from src.data.pipeline import run_data_preparation_flow
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -53,7 +53,7 @@ def parse_args() -> argparse.Namespace:
 
     return parser.parse_args()
 
-def prepare_data():
+def prepare_data() -> bool:
     args = parse_args()
 
     try:
@@ -65,13 +65,14 @@ def prepare_data():
             skip_multiclass=args.skip_multiclass,
             validate=args.validate
         )
-        sys.exit(0 if success else 1)
+        return success
     except KeyboardInterrupt:
         print("\n\nPreparação interrompida pelo usuário.\n")
-        sys.exit(130)
+        return False
     except Exception as e:
         print(f"\n\nErro crítico durante a preparação: {str(e)}\n")
-        sys.exit(1)
+        return False
 
 if __name__ == "__main__":
-    prepare_data()
+    success = prepare_data()
+    sys.exit(0 if success else 1)

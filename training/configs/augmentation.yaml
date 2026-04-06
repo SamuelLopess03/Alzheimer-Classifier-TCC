@@ -142,9 +142,14 @@ synthetic_transformer:
 # 5. CONFIGURAÇÕES DE BALANCEAMENTO
 # ------------------------------------------------------------
 minority_augmentation:
-  strategies: [balance, ratio, proportional, custom, percentage]
-  default_ratio: 0.6
-  multiplier: 1.5
+  strategies:
+    balance: {}
+    ratio:
+      default_ratio: 0.6
+    proportional:
+      multiplier: 1.5
+    custom: {}
+    percentage: {}
   random_seed:
     base: 42
     per_class_offset: true

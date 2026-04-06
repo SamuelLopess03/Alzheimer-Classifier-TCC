@@ -9,9 +9,11 @@ from typing import Dict, Tuple, Optional
 from .engine import train_epoch, validation_epoch
 from .factory import get_training_config, create_scheduler
 from .checkpoints import save_best_checkpoint
-from ..data import DynamicAugmentationDataset, StaticPreprocessedDataset, get_subject_ids_from_dataset
+from ..data.dataset_wrappers import DynamicAugmentationDataset, StaticPreprocessedDataset
+from ..data.subject_manager import get_subject_ids_from_dataset
 from ..evaluation import evaluate_performance
-from ..visualization import log_final_training_metrics
+from ..visualization.wandb_logger import log_final_training_metrics
+from ..visualization.terminal import print_epoch_log
 from src.utils.config import load_hyperparameters_config
 from src.utils.hardware import get_pytorch_device
 
@@ -117,9 +119,18 @@ def run_training_process(
                 learning_rate=optimizer.param_groups[0]['lr']
             )
 
-        print(f"Epoch {epoch+1:02d}/{num_epochs} | Train Loss: {train_loss:.4f} | Val F1: {metrics['f1_score']*100:.2f}% | Patience: {patience_counter}")
+        is_epoch_best = metrics['f1_score'] > best_f1_score
+        
+        print_epoch_log(
+            epoch=epoch + 1, 
+            num_epochs=num_epochs, 
+            train_loss=train_loss, 
+            metrics=metrics, 
+            patience=patience_counter,
+            is_best=is_epoch_best
+        )
 
-        if metrics['f1_score'] > best_f1_score:
+        if is_epoch_best:
             best_f1_score = metrics['f1_score']
             best_metrics = metrics
             patience_counter = 0

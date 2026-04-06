@@ -24,10 +24,12 @@ class DynamicAugmentationDataset(Dataset):
         if not size_metric:
             size_metric = len(subset_dataset)
 
+        num_slices = len(subset_dataset)
         self.transform = get_alzheimer_grayscale_augmentation(
             architecture_name=architecture_name,
             dataset_size=size_metric,
-            is_training=True
+            is_training=True,
+            num_slices=num_slices
         )
         
         self.synthetic_transform = create_synthetic_augmentation_for_minority(
@@ -41,6 +43,10 @@ class DynamicAugmentationDataset(Dataset):
         base_dataset = self.subset_dataset
 
         while hasattr(base_dataset, 'dataset'):
+            if hasattr(base_dataset, 'is_synthetic'):
+                if base_dataset.is_synthetic(idx):
+                    return True
+            
             if hasattr(base_dataset, 'indices'):
                 idx = base_dataset.indices[idx]
             base_dataset = base_dataset.dataset
@@ -105,40 +111,28 @@ class StaticPreprocessedDataset(Dataset):
 class SyntheticAugmentedDataset(Dataset):
     def __init__(
             self,
-            original_dataset: Subset,
-            synthetic_indices: List[int],
-            augmentation_transform,
-            original_transform=None
+            sampling_subset: 'SubjectSamplingSubset',
+            augmentation_transform
     ):
-        self.original_dataset = original_dataset
-        self.synthetic_indices = synthetic_indices
+        self.sampling_subset = sampling_subset
         self.augmentation_transform = augmentation_transform
-        self.original_transform = original_transform
-        self.num_synthetic_copies = len(synthetic_indices)
 
     def __len__(self) -> int:
-        return len(self.original_dataset) + self.num_synthetic_copies
+        return len(self.sampling_subset.indices) + len(self.sampling_subset.synthetic_indices)
 
     def is_synthetic(self, idx: int) -> bool:
-        return idx >= len(self.original_dataset)
+        return idx >= len(self.sampling_subset.indices)
 
     def __getitem__(self, idx: int):
-        if idx < len(self.original_dataset):
-            return self.original_dataset[idx]
+        if idx < len(self.sampling_subset.indices):
+            return self.sampling_subset[idx]
 
-        synthetic_idx = idx - len(self.original_dataset)
-        original_idx = self.synthetic_indices[synthetic_idx]
-
-        base_dataset = self.original_dataset
-        while hasattr(base_dataset, 'dataset'):
-            base_dataset = base_dataset.dataset
-
-        if hasattr(base_dataset, 'data') and hasattr(base_dataset, 'targets'):
-            image = base_dataset.data[original_idx]
-            label = base_dataset.targets[original_idx]
-        else:
-            image, label = base_dataset[original_idx]
-
+        synthetic_idx = idx - len(self.sampling_subset.indices)
+        original_img_idx = self.sampling_subset.synthetic_indices[synthetic_idx]
+        
+        base_dataset = self.sampling_subset.dataset
+        image, label = base_dataset[original_img_idx]
+        
         image = prepare_image_for_augmentation(image)
         augmented = self.augmentation_transform(image=image)
         
@@ -155,9 +149,14 @@ def augment_minority_class(
 ) -> Subset:
     aug_config = load_augmentation_config()
     min_cfg = aug_config['minority_augmentation']
+    strategies_cfg = min_cfg.get("strategies", {})
+
     minority_classes = minority_classes or [0]
-    target_strategy = target_strategy or list(min_cfg["strategies"].keys())[1]
-    target_ratio = target_ratio or min_cfg['strategies']['ratio']['default_ratio']
+    target_strategy = target_strategy or list(strategies_cfg.keys())[1] if strategies_cfg else 'ratio'
+    
+    if target_ratio is None:
+        ratio_cfg = strategies_cfg.get('ratio', {})
+        target_ratio = ratio_cfg.get('default_ratio', 0.6) if isinstance(ratio_cfg, dict) else 0.6
 
     print(f"\n{'-' * 60}\nBALANCER: Iniciando aumentação ({target_strategy})\n{'-' * 60}")
 
@@ -169,19 +168,20 @@ def augment_minority_class(
         target_ratio, custom_targets, target_percentage
     )
     
-    synthetic_indices = _sample_synthetic_indices(
-        train_split, train_labels, targets, class_counts, min_cfg
+    synthetic_quotas = _calculate_subject_quotas(
+        train_split, train_labels, targets, class_counts
     )
 
-    if not synthetic_indices:
+    if not any(q > 0 for q in synthetic_quotas.values()):
         print("\nNenhum balanceamento necessário.\n")
         return train_split
 
+    train_split.set_synthetic_quotas(synthetic_quotas)
+    
     synthetic_transform = create_synthetic_augmentation_for_minority(architecture_name)
     
     augmented_ds = SyntheticAugmentedDataset(
-        original_dataset=train_split,
-        synthetic_indices=synthetic_indices,
+        sampling_subset=train_split,
         augmentation_transform=synthetic_transform
     )
 
@@ -204,7 +204,9 @@ def _calculate_target_counts(
         elif strategy == 'ratio':
             targets[cl] = int(majority_count * (ratio or 1.0))
         elif strategy == 'proportional':
-            targets[cl] = int(count * config['strategies']['proportional']['multiplier'])
+            prop_cfg = config['strategies'].get('proportional', {})
+            multiplier = prop_cfg.get('multiplier', 1.5) if isinstance(prop_cfg, dict) else 1.5
+            targets[cl] = int(count * multiplier)
         elif strategy == 'custom':
             targets[cl] = custom[cl]
         elif strategy == 'percentage':
@@ -213,24 +215,32 @@ def _calculate_target_counts(
 
     return targets
 
-def _sample_synthetic_indices(
-    split, labels, targets, class_counts, config
-) -> List[int]:
-    synthetic_indices = []
-    base_seed = config['random_seed']['base']
+def _calculate_subject_quotas(
+    split: 'SubjectSamplingSubset', labels, targets, class_counts
+) -> Dict[str, int]:
+    quotas = {}
+    
+    subjects_in_split = list(split.subject_indices.keys())
     
     for cl, target_count in targets.items():
         num_new = max(0, target_count - class_counts[cl])
+        if num_new <= 0:
+            continue
+            
+        print(f"   Classe {cl}: distribuindo {num_new} cotas sintéticas dinâmicas")
         
-        if num_new > 0:
-            print(f"   Classe {cl}: gerando {num_new} amostras sintéticas")
-            indices_in_split = [split.indices[i] for i, l in enumerate(labels) if l == cl]
-            seed = base_seed + cl if config['random_seed']['per_class_offset'] else base_seed
-            rng = np.random.default_rng(seed)
-            sampled = rng.choice(indices_in_split, size=num_new, replace=True)
-            synthetic_indices.extend(sampled.tolist())
+        minority_subjects = [s for s in subjects_in_split if split.subject_labels.get(s) == cl]
+        
+        if not minority_subjects:
+            continue
+            
+        quota_per_subject = num_new // len(minority_subjects)
+        remainder = num_new % len(minority_subjects)
+        
+        for i, s in enumerate(minority_subjects):
+            quotas[s] = quota_per_subject + (1 if i < remainder else 0)
 
-    return synthetic_indices
+    return quotas
 
 def _print_augmentation_summary(class_counts, targets, total):
     print(f"\nDistribuição Final ({total} amostras):")
@@ -252,11 +262,22 @@ class SubjectSamplingSubset(Subset):
         self.max_slices = max_slices
         self.strategy = strategy
         self.rng = np.random.default_rng(random_state)
+        
+        self.subject_labels = {sid: dataset.samples[indices[0]][1] for sid, indices in subject_indices.items()}
+        self.synthetic_quotas = {}
+        self.synthetic_indices = []
+        
         super().__init__(dataset, [])
+        self.resample()
+
+    def set_synthetic_quotas(self, quotas: Dict[str, int]):
+        self.synthetic_quotas = quotas
+        
         self.resample()
 
     def resample(self):
         new_indices = []
+        new_synthetic = []
 
         for sid, indices in self.subject_indices.items():
             if self.max_slices is not None and len(indices) > self.max_slices:
@@ -268,8 +289,14 @@ class SubjectSamplingSubset(Subset):
                     new_indices.extend(sampled)
             else:
                 new_indices.extend(indices)
+            
+            quota = self.synthetic_quotas.get(sid, 0)
+            if quota > 0:
+                synthetic_sampled = self.rng.choice(indices, size=quota, replace=True)
+                new_synthetic.extend(synthetic_sampled.tolist())
                 
         self.indices = sorted(new_indices)
+        self.synthetic_indices = new_synthetic
 
     def _select_middle_slices(self, indices: List[int], max_n: int) -> List[int]:
         if max_n is None or len(indices) <= max_n:

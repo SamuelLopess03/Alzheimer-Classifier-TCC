@@ -22,10 +22,13 @@ services:
     depends_on:
       data-setup:
         condition: service_completed_successfully
+    env_file:
+      - ./training/.env
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+      - WANDB_SILENT=true
     ports:
       - "8080:8080"
     volumes:
@@ -54,10 +57,13 @@ services:
     depends_on:
       data-setup:
         condition: service_completed_successfully
+    env_file:
+      - ./training/.env
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
+      - WANDB_SILENT=true
     ports:
       - "8081:8080"
     volumes:

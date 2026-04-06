@@ -16,13 +16,13 @@ from .factory import get_training_config, generate_random_combinations
 from .trainer import run_training_process
 from src.utils.config import load_hyperparameters_config
 from ..evaluation import calculate_combined_score, aggregate_repetition_metrics
-from ..visualization import (
+from ..visualization.wandb_logger import (
     init_wandb_run, 
     finish_wandb_run, 
-    print_repetition_summary,
-    log_search_metrics
+    log_search_repetition_progress
 )
-from ..data import (
+from ..visualization.terminal import print_repetition_summary
+from ..data.dataset_wrappers import (
     create_stratified_holdout_split,
     augment_minority_class
 )
@@ -112,6 +112,13 @@ def _run_combination_repetitions(idx, params, n_repetitions, all_splits, archite
             )
             result.update({'repetition': rep + 1, 'model_type': model_type})
             repetition_results.append(result)
+
+            if wandb.run:
+                log_search_repetition_progress(
+                    repetition_results=repetition_results,
+                    combination_index=idx,
+                    is_multiclass=is_multiclass
+                )
         except Exception as e:
             print(f"  [ERRO] Falha na repetição {rep + 1}: {str(e)}")
             continue
@@ -122,7 +129,6 @@ def _process_combination_results(idx, params, repetition_results, results, archi
     aggregated = aggregate_repetition_metrics(repetition_results, is_multiclass)
     
     print_repetition_summary(aggregated, idx)
-    log_search_metrics(aggregated, idx)
 
     checkpoint_key = f"{architecture_name}_{model_type}"
     checkpoint_manager.save_combination(checkpoint_key, idx, params, aggregated)

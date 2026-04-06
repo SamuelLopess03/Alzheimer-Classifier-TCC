@@ -1,5 +1,6 @@
 import albumentations as alb
 from albumentations.pytorch import ToTensorV2
+from typing import Optional
 
 from .preprocessing import MedicalImagePreprocessor
 from src.utils.config import load_augmentation_config
@@ -9,7 +10,8 @@ _TRANSFORMER_ARCHS = {'vit_b_16', 'swin_v2_tiny'}
 def get_alzheimer_grayscale_augmentation(
         architecture_name: str,
         dataset_size: int,
-        is_training: bool = True
+        is_training: bool = True,
+        num_slices: Optional[int] = None
 ) -> alb.Compose:
     preprocessor = MedicalImagePreprocessor(architecture_name)
     config = preprocessor.config
@@ -37,7 +39,11 @@ def get_alzheimer_grayscale_augmentation(
     cfg = aug_config[cfg_key]
 
     label = "Transformer" if is_transformer else "CNN"
-    print(f"\nAugmentação {level.capitalize()} ({label}, N={dataset_size})\n")
+    info_str = f"Subjects={dataset_size}" 
+    if num_slices:
+        info_str += f", Slices={num_slices}"
+        
+    print(f"\nAugmentação {level.capitalize()} ({label}, {info_str})\n")
 
     pipeline_fn = _PIPELINE_REGISTRY[(family, level)]
     return alb.Compose(pipeline_fn(config, cfg))

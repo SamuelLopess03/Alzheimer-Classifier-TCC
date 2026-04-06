@@ -22,7 +22,7 @@ from src.visualization.terminal import (
     print_search_summary
 )
 from ..models import create_model_with_architecture
-from ..data import create_stratified_holdout_split
+from ..data.dataset_wrappers import create_stratified_holdout_split
 
 def run_training_flow(model_type: str, data_path: str) -> bool:
     is_multiclass = (model_type == 'multiclass')

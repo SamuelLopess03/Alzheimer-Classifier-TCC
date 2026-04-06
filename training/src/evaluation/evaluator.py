@@ -6,8 +6,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from ..training import validation_epoch
-from ..visualization import log_inference_results
-from ..data import StaticPreprocessedDataset, get_subject_ids_from_dataset
+from ..visualization.wandb_logger import log_inference_results
+from ..data.dataset_wrappers import StaticPreprocessedDataset
+from ..data.subject_manager import get_subject_ids_from_dataset
 from src.utils.config import load_hyperparameters_config
 
 from .metrics import evaluate_performance

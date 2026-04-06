@@ -93,7 +93,7 @@ def main():
         
         try:
             if step == 'prepare_data':
-                success = (prepare_data() or True)
+                success = prepare_data()
             elif step == 'grid_search':
                 success = run_training_flow('binary', args.data_path)
             elif step == 'train_final':
