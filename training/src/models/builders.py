@@ -6,6 +6,42 @@ from typing import Dict, Any, cast, Optional
 
 from .builder_registry import ModelBuilder, model_registry
 from .layer_utils import get_module_by_name, set_module_by_name
+from src.utils.config import load_hyperparameters_config
+
+class GlobalPoolAndHead(nn.Module):
+    def __init__(self, in_features, hidden_units, dropout, num_classes, 
+                 pre_norm: Optional[nn.Module] = None, 
+                 post_norm: Optional[nn.Module] = None,
+                 activation: nn.Module = nn.ReLU(inplace=True)):
+        super().__init__()
+        self.pre_norm = pre_norm
+        self.post_norm = post_norm
+        self.head = nn.Sequential(
+            nn.Linear(in_features, hidden_units),
+            activation,
+            nn.Dropout(dropout),
+            nn.Linear(hidden_units, num_classes)
+        )
+
+    def forward(self, x):
+        if self.pre_norm:
+            x = self.pre_norm(x)
+
+        if len(x.shape) == 4:
+            if x.shape[1] == self.head[0].in_features:
+                x = x.mean(dim=(2, 3))
+            else:
+                x = x.mean(dim=(1, 2))
+        elif len(x.shape) == 3:
+            x = x.mean(dim=1)
+        
+        if len(x.shape) > 2:
+            x = x.flatten(1)
+
+        if self.post_norm:
+            x = self.post_norm(x)
+            
+        return self.head(x)
 
 class CNNBuilder(ModelBuilder):
     def build_base(self, architecture_name: str, config: Dict[str, Any]) -> nn.Module:
@@ -15,7 +51,7 @@ class CNNBuilder(ModelBuilder):
             return models.resnext50_32x4d(weights=config.get('weights', 'IMAGENET1K_V2'))
         elif 'convnext_tiny' in arch_lower:
             return models.convnext_tiny(weights=config.get('weights', 'IMAGENET1K_V1'))
-        elif 'efficientnet_v2_s' in arch_lower:
+        elif 'efficientnet' in arch_lower:
             return models.efficientnet_v2_s(weights=config.get('weights', 'IMAGENET1K_V1'))
         elif 'densenet121' in arch_lower:
             return models.densenet121(weights=config.get('weights', 'IMAGENET1K_V1'))
@@ -51,35 +87,20 @@ class CNNBuilder(ModelBuilder):
     def replace_head(self, model: nn.Module, arch_config: Dict[str, Any], in_features: int, hidden_units: int, dropout: float, num_classes: int) -> nn.Module:
         layer_path = arch_config.get('classifier_layer')
         
-        head = nn.Sequential(
-            nn.Linear(in_features, hidden_units),
-            nn.ReLU(True),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_units, num_classes)
-        )
-        
+        original_prep = None
         if 'convnext' in arch_config['type'].lower() or 'convnext' in layer_path:
             original_classifier = get_module_by_name(model, layer_path)
-            layernorm = original_classifier[0]
-            flatten = original_classifier[1]
-            head = nn.Sequential(
-                layernorm, 
-                flatten, 
-                nn.Linear(in_features, hidden_units), 
-                nn.ReLU(True), 
-                nn.Dropout(dropout), 
-                nn.Linear(hidden_units, num_classes)
-            )
-        elif 'efficientnet' in arch_config['type'].lower() or 'efficientnet' in layer_path:
-            head = nn.Sequential(
-                nn.Dropout(dropout), 
-                nn.Linear(in_features, hidden_units), 
-                nn.ReLU(True), 
-                nn.Dropout(dropout), 
-                nn.Linear(hidden_units, num_classes)
-            )
+            original_prep = original_classifier[0]
 
-        set_module_by_name(model, layer_path, head)
+        head = GlobalPoolAndHead(
+            in_features=in_features, 
+            hidden_units=hidden_units, 
+            dropout=dropout, 
+            num_classes=num_classes, 
+            pre_norm=original_prep,
+            activation=nn.ReLU(inplace=True)
+        )
+        set_module_by_name(model, layer_path, head)     
         return model
 
     def get_in_features(self, model: nn.Module, arch_config: Dict[str, Any]) -> int:
@@ -136,13 +157,15 @@ class TransformerBuilder(ModelBuilder):
 
     def replace_head(self, model: nn.Module, arch_config: Dict[str, Any], in_features: int, hidden_units: int, dropout: float, num_classes: int) -> nn.Module:
         layer_path = arch_config.get('classifier_layer')
-        head = nn.Sequential(
-            nn.LayerNorm(in_features),
-            nn.Dropout(dropout),
-            nn.Linear(in_features, hidden_units),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_units, num_classes)
+        post_norm = nn.LayerNorm(in_features)
+
+        head = GlobalPoolAndHead(
+            in_features=in_features, 
+            hidden_units=hidden_units, 
+            dropout=dropout, 
+            num_classes=num_classes,
+            post_norm=post_norm,
+            activation=nn.GELU()
         )
         set_module_by_name(model, layer_path, head)
         return model
@@ -163,5 +186,11 @@ class TransformerBuilder(ModelBuilder):
 cnn_builder = CNNBuilder()
 transformer_builder = TransformerBuilder()
 
-model_registry.register_builder('cnn', cnn_builder, ['resnext50_32x4d', 'convnext_tiny', 'efficientnetv2_s', 'densenet121'])
-model_registry.register_builder('transformer', transformer_builder, ['vit_b_16', 'swin_v2_tiny'])
+config = load_hyperparameters_config()
+supported_archs = config.get('supported_architectures', {})
+
+cnn_archs = supported_archs.get('cnn') or []
+transformer_archs = supported_archs.get('transformer') or []
+
+model_registry.register_builder('cnn', cnn_builder, cnn_archs)
+model_registry.register_builder('transformer', transformer_builder, transformer_archs)

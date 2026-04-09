@@ -46,11 +46,21 @@ class SearchCheckpointManager:
 
     def load_state(self, key: str) -> Tuple[Set[int], Dict]:
         state_file = self.get_search_directory(key) / 'execution_state.json'
+        default_results = {'best_score': 0.0, 'best_params': None, 'best_metrics': None, 'best_combination_index': -1}
+        
         if not state_file.exists():
-            return set(), {'best_score': 0.0, 'best_params': None, 'best_metrics': None, 'best_combination_index': -1}
-        with open(state_file, 'r') as f:
-            state = json.load(f)
-        return set(state['executed_indices']), state['results']
+            return set(), default_results
+            
+        try:
+            with open(state_file, 'r') as f:
+                state = json.load(f)
+            
+            executed_indices = set(state.get('executed_indices', []))
+            results = state.get('results', default_results)
+            return executed_indices, results
+        except Exception as e:
+            print(f"Erro ao carregar estado em {state_file}: {e}. Iniciando novo estado.")
+            return set(), default_results
 
     def save_combination(self, key: str, idx: int, params: Dict, metrics: Dict):
         result_file = self.get_search_directory(key) / f'combination_{idx}.json'
@@ -139,10 +149,15 @@ def _process_combination_results(idx, params, repetition_results, results, archi
         results.update({'best_score': score, 'best_params': params.copy(), 'best_metrics': aggregated.copy(), 'best_combination_index': idx, 'model_type': model_type})
         if wandb.run: wandb.run.summary.update({"is_best": True, "best_score": score})
 
-    executed_indices.add(idx)
     checkpoint_manager.save_state(checkpoint_key, executed_indices, results)
     print(f"Progresso: {len(executed_indices)}/{total_combos} | Score Atual: {score:.4f} | Melhor: {results['best_score']:.4f}")
     return results
+
+def _mark_combination_failed(idx, architecture_name, model_type, checkpoint_manager, executed_indices, results):
+    print(f"\n[AVISO] Combinação {idx+1} falhou em todas as repetições. Pulando para evitar loop infinito.")
+    executed_indices.add(idx)
+    checkpoint_key = f"{architecture_name}_{model_type}"
+    checkpoint_manager.save_state(checkpoint_key, executed_indices, results)
 
 def _report_final_results(results, executed_indices, total_combos, architecture_name, model_type, checkpoint_manager):
     print(f"\n{'-' * 60}\nSEARCH FINISHED: {architecture_name.upper()} | Best Score: {results['best_score']:.6f}\n{'-' * 60}")
@@ -175,23 +190,30 @@ def evaluate_hyperparameters(param_grid, architecture_name, device, train_datase
         params = dict(zip(param_names, combinations[idx]))
         print(f"\n{'=' * 60}\nCOMBINAÇÃO [{idx + 1}/{total_combinations}] | Params: {params}\n{'=' * 60}")
 
-        if config['logging']['wandb']['enabled']:
-            wandb_cfg = config['logging']['wandb']
-            init_wandb_run(
-                project_name=wandb_cfg['project'],
-                run_name=f"{architecture_name}_combo_{idx+1}_{model_type}",
-                config={"architecture": architecture_name, "model_type": model_type, "index": idx, **params},
-                entity=wandb_cfg.get('entity'),
-                tags=["random_search", architecture_name, model_type],
-                group=f"search/{model_type}"  # Grupo aninhado: pasta 'search' > subpasta por tipo
-            )
+        try:
+            if config['logging']['wandb']['enabled']:
+                wandb_cfg = config['logging']['wandb']
+                init_wandb_run(
+                    project_name=wandb_cfg['project'],
+                    run_name=f"{architecture_name}_combo_{idx+1}_{model_type}",
+                    config={"architecture": architecture_name, "model_type": model_type, "index": idx, **params},
+                    entity=wandb_cfg.get('entity'),
+                    tags=["random_search", architecture_name, model_type],
+                    group=f"search/{model_type}"
+                )
 
-        repetition_results = _run_combination_repetitions(idx, params, n_repetitions, all_splits, architecture_name, class_names, device, model_type)
-        
-        if repetition_results:
-            results = _process_combination_results(idx, params, repetition_results, results, architecture_name, model_type, class_names, checkpoint_manager, executed_indices, total_combinations)
-        
-        finish_wandb_run()
+            repetition_results = _run_combination_repetitions(idx, params, n_repetitions, all_splits, architecture_name, class_names, device, model_type)
+            
+            if repetition_results:
+                results = _process_combination_results(idx, params, repetition_results, results, architecture_name, model_type, class_names, checkpoint_manager, executed_indices, total_combinations)
+            else:
+                results = _mark_combination_failed(idx, architecture_name, model_type, checkpoint_manager, executed_indices, results)
+            
+        except Exception as e:
+            print(f"\n[ERRO CRÍTICO] Falha catastrófica na combinação {idx+1}: {e}")
+            results = _mark_combination_failed(idx, architecture_name, model_type, checkpoint_manager, executed_indices, results)
+        finally:
+            finish_wandb_run()
 
     return _report_final_results(results, executed_indices, total_combinations, architecture_name, model_type, checkpoint_manager)
 

@@ -53,17 +53,29 @@ def parse_args() -> argparse.Namespace:
 
     return parser.parse_args()
 
-def prepare_data() -> bool:
-    args = parse_args()
-
+def prepare_data(
+    kaggle_dataset: str = "ninadaithal/imagesoasis",
+    output_path: str = None,
+    kaggle_json: str = None,
+    skip_binary: bool = False,
+    skip_multiclass: bool = False,
+    validate: bool = False
+) -> bool:
     try:
+        # Resolve caminhos padrão se não fornecidos
+        base_dir = Path(__file__).resolve().parent.parent
+        if output_path is None:
+            output_path = str(base_dir / 'shared/data')
+        if kaggle_json is None:
+            kaggle_json = str(base_dir / 'kaggle.json')
+
         success = run_data_preparation_flow(
-            kaggle_dataset=args.kaggle_dataset,
-            output_path=args.output_path,
-            kaggle_json=args.kaggle_json,
-            skip_binary=args.skip_binary,
-            skip_multiclass=args.skip_multiclass,
-            validate=args.validate
+            kaggle_dataset=kaggle_dataset,
+            output_path=output_path,
+            kaggle_json=kaggle_json,
+            skip_binary=skip_binary,
+            skip_multiclass=skip_multiclass,
+            validate=validate
         )
         return success
     except KeyboardInterrupt:
@@ -74,5 +86,13 @@ def prepare_data() -> bool:
         return False
 
 if __name__ == "__main__":
-    success = prepare_data()
+    args = parse_args()
+    success = prepare_data(
+        kaggle_dataset=args.kaggle_dataset,
+        output_path=args.output_path,
+        kaggle_json=args.kaggle_json,
+        skip_binary=args.skip_binary,
+        skip_multiclass=args.skip_multiclass,
+        validate=args.validate
+    )
     sys.exit(0 if success else 1)

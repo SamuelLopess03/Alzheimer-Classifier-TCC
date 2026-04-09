@@ -93,7 +93,7 @@ def main():
         
         try:
             if step == 'prepare_data':
-                success = prepare_data()
+                success = prepare_data(output_path=args.data_path)
             elif step == 'grid_search':
                 success = run_training_flow('multiclass', args.data_path)
             elif step == 'train_final':
