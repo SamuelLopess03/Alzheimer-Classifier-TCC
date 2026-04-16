@@ -13,7 +13,7 @@ from src.utils.config import (
 )
 from src.utils.hardware import get_pytorch_device
 from .architectures import create_model
-from ..data.augmentation import denormalize_images
+from ..data.preprocessing import denormalize_images
 from ..evaluation.gradcam import run_single_gradcam
 
 class InferenceWrapper(nn.Module):
@@ -147,7 +147,7 @@ class InferenceWrapper(nn.Module):
         return result
 
     def _load_model_from_checkpoint(self, path: str, model_type: str) -> nn.Module:
-        checkpoint = torch.load(path, map_location=self.device)
+        checkpoint = torch.load(path, map_location=self.device, weights_only=True)
         arch_name = checkpoint['architecture_name']
         hparams = checkpoint['hyperparameters']
         
@@ -156,7 +156,8 @@ class InferenceWrapper(nn.Module):
             hidden_units=hparams['hidden_units'],
             dropout=hparams['dropout'],
             num_classes=checkpoint['num_classes'],
-            device=self.device
+            device=self.device,
+            verbose=False
         )
         
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -164,23 +165,45 @@ class InferenceWrapper(nn.Module):
         return model
 
     def _resolve_checkpoint_path(self, config: Dict) -> str:
-        checkpoint_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", str(config['checkpoint']['save_path'])))
+        checkpoint_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), str(config['checkpoint']['save_path'])))
         
         return str(Path(checkpoint_dir) / "best_model.pth")
 
-    def generate_gradcam(self, image_path: str, save_dir: str):
+    def generate_gradcam(self, image_path: str, save_dir: str, subject_name: str, slice_index: int, requires_multiclass: bool):
         if self.binary_model is None: raise RuntimeError("Modelos não carregados.")
         os.makedirs(save_dir, exist_ok=True)
         
         img_tensor = self._load_and_preprocess_image(image_path).to(self.device).squeeze(0)
         
-        run_single_gradcam(
-            model=self.binary_model, img_tensor=img_tensor, device=self.device,
-            class_names=self.binary_class_names, save_path=os.path.join(save_dir, "gradcam_binary.png")
-        )
-
-        if self.multiclass_model:
+        file_name = f"{subject_name}_slice_{slice_index:02d}.png"
+        
+        if requires_multiclass and self.multiclass_model:
             run_single_gradcam(
                 model=self.multiclass_model, img_tensor=img_tensor, device=self.device,
-                class_names=self.multiclass_class_names, save_path=os.path.join(save_dir, "gradcam_multiclass.png")
+                class_names=self.multiclass_class_names, save_path=os.path.join(save_dir, file_name)
             )
+        else:
+            run_single_gradcam(
+                model=self.binary_model, img_tensor=img_tensor, device=self.device,
+                class_names=self.binary_class_names, save_path=os.path.join(save_dir, file_name)
+            )
+
+    def print_prediction(self, result: Dict):
+        print(f"\n[{'=' * 60}]")
+        print("RESULTADO DO DIAGNÓSTICO CLÍNICO")
+        print(f"[{'=' * 60}]\n")
+        
+        print("1. Avaliação Primária (Binária):")
+        bin_pred = result['binary_prediction']
+        print(f"   => Classe: {bin_pred['class_name']}")
+        print(f"   => Confiança: {bin_pred['confidence'] * 100:.2f}%")
+        
+        if result['requires_multiclass']:
+            print("\n2. Avaliação Secundária (Multiclasse - Estagiamento):")
+            multi_pred = result['multiclass_prediction']
+            print(f"   => Estágio: {multi_pred['class_name']}")
+            print(f"   => Confiança: {multi_pred['confidence'] * 100:.2f}%")
+        
+        print(f"\n{'-' * 60}")
+        print(f"DIAGNÓSTICO FINAL: >> {result['final_prediction'].upper()} <<")
+        print(f"{'-' * 60}\n")

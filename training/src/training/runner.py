@@ -23,6 +23,7 @@ from src.visualization.terminal import (
 )
 from ..models import create_model_with_architecture
 from ..data.dataset_wrappers import create_stratified_holdout_split
+from ..visualization.wandb_logger import init_wandb_run, finish_wandb_run
 
 def run_training_flow(model_type: str, data_path: str) -> bool:
     is_multiclass = (model_type == 'multiclass')
@@ -91,8 +92,14 @@ def run_final_training_flow(model_type: str, experiments_path: str, data_path: s
 
     train_ratio = config['data']['split_ratios']['train']
     val_ratio = config['data']['split_ratios']['train_val']
+    
+    # Amostragem generalizada (limita fatias contíguas redundantes)
     train_split, val_split = create_stratified_holdout_split(
-        train_dataset, train_ratio, val_ratio, random_state=config['data']['random_seed']
+        train_dataset, 
+        train_ratio, 
+        val_ratio, 
+        random_state=config['data']['random_seed'],
+        max_slices_per_subject=config['data'].get('max_slices_per_subject')
     )
 
     print_section("CONFIGURANDO MODELO FINAL")

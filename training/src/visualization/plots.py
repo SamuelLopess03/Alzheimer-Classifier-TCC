@@ -47,16 +47,17 @@ def _plot_base_confusion_matrix(
         plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
 
     if extra_text:
+        plt.tight_layout(rect=[0, 0.15, 1, 1])
         fig.text(
-            0.1, 0.02,
+            0.28, 0.12,
             extra_text,
             ha='left',
+            va='bottom',
             fontsize=10,
             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5)
         )
-        plt.subplots_adjust(bottom=0.18)
-
-    plt.tight_layout()
+    else:
+        plt.tight_layout()
     return fig
 
 def plot_confusion_matrix(

@@ -9,7 +9,7 @@ from .builder_registry import model_registry
 from . import builders 
 from src.utils.config import load_hyperparameters_config
 
-def _handle_freezing(model: nn.Module, architecture_name: str, arch_cfg: Dict):
+def _handle_freezing(model: nn.Module, architecture_name: str, arch_cfg: Dict, verbose: bool = True):
     freeze_backbone = arch_cfg.get('freeze_backbone', False)
     classifier_layer = arch_cfg.get('classifier_layer', 'fc')
     
@@ -21,18 +21,19 @@ def _handle_freezing(model: nn.Module, architecture_name: str, arch_cfg: Dict):
             if classifier_layer in name or any(k in name for k in ['classifier', 'fc', 'head']):
                 param.requires_grad = True
                 
-        print(f"Backbone TOTALMENTE congelado para {architecture_name} (apenas o head será treinado)")
+        if verbose: print(f"Backbone TOTALMENTE congelado para {architecture_name} (apenas o head será treinado)")
     else:
         for param in model.parameters():
             param.requires_grad = True
-        print(f"Treinamento TOTAL (Backbone + Head) habilitado para {architecture_name}")
+        if verbose: print(f"Treinamento TOTAL (Backbone + Head) habilitado para {architecture_name}")
 
 def create_model(
         architecture_name: str,
         hidden_units: int,
         dropout: float,
         num_classes: int,
-        device: torch.device
+        device: torch.device,
+        verbose: bool = True
 ) -> nn.Module:
     hyperparams_config = load_hyperparameters_config()
     arch_lower = architecture_name.lower()
@@ -47,38 +48,40 @@ def create_model(
     arch_cfg = hyperparams_config['model_config'][arch_lower]
     grayscale_cfg = hyperparams_config['grayscale_adaptation']
 
-    print(f"Criando modelo: {architecture_name}")
-    print(f"   Hidden Units: {hidden_units}")
-    print(f"   Dropout: {dropout}")
-    print(f"   Num Classes: {num_classes}\n")
+    if verbose:
+        print(f"Criando modelo: {architecture_name}")
+        print(f"   Hidden Units: {hidden_units}")
+        print(f"   Dropout: {dropout}")
+        print(f"   Num Classes: {num_classes}\n")
 
     model = builder.build_base(architecture_name, arch_cfg)
     
     if grayscale_cfg.get('enabled', True):
-        print(f"Adaptando {architecture_name} para entrada grayscale...")
+        if verbose: print(f"Adaptando {architecture_name} para entrada grayscale...")
         model = builder.adapt_grayscale(
             model, 
             arch_cfg, 
             preserve_weights=grayscale_cfg.get('preserve_pretrained_weights', True)
         )
-        print(f"Modelo adaptado com sucesso para grayscale!\n")
+        if verbose: print(f"Modelo adaptado com sucesso para grayscale!\n")
     else:
-        print(f"Adaptação para grayscale desabilitada no config. Retornando modelo original.\n")
+        if verbose: print(f"Adaptação para grayscale desabilitada no config. Retornando modelo original.\n")
 
     in_features = builder.get_in_features(model, arch_cfg)
     model = builder.replace_head(model, arch_cfg, in_features, hidden_units, dropout, num_classes)
 
-    _handle_freezing(model, architecture_name, arch_cfg)
+    _handle_freezing(model, architecture_name, arch_cfg, verbose=verbose)
 
     model = model.to(device)
 
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     total_params = sum(p.numel() for p in model.parameters())
 
-    print(f"Modelo criado")
-    print(f"   Parâmetros treináveis: {trainable_params:,}")
-    print(f"   Parâmetros totais: {total_params:,}")
-    print(f"   Ratio: {trainable_params / total_params * 100:.1f}%\n")
+    if verbose:
+        print(f"Modelo criado")
+        print(f"   Parâmetros treináveis: {trainable_params:,}")
+        print(f"   Parâmetros totais: {total_params:,}")
+        print(f"   Ratio: {trainable_params / total_params * 100:.1f}%\n")
 
     return model
 

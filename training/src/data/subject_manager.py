@@ -147,3 +147,48 @@ def split_dataset_train_test(
     print(f"  Train: {train_count} imagens ({len(train_subjs)} sujeitos) | Test: {test_count} imagens ({len(test_subjs)} sujeitos)")
 
     return DatasetMetadata(output_train_path, classes), DatasetMetadata(output_test_path, classes)
+
+def get_central_slices_per_class(
+    dataset: Any, 
+    num_classes: int, 
+    samples_per_class: int,
+    indices: Optional[np.ndarray] = None
+) -> Dict[int, List[int]]:
+    class_indices = {i: [] for i in range(num_classes)}
+    
+    if not hasattr(dataset, 'samples'):
+        return class_indices
+
+    for class_idx in range(num_classes):
+        if indices is not None:
+            class_items = [(i, dataset.samples[i][0]) for i in indices if dataset.samples[i][1] == class_idx]
+        else:
+            class_items = [(i, path) for i, (path, label) in enumerate(dataset.samples) if label == class_idx]
+            
+        if not class_items:
+            continue
+            
+        pacientes_indices = {}
+        for idx, path in class_items:
+            sid = extract_subject_id(os.path.basename(path))
+            if sid not in pacientes_indices:
+                pacientes_indices[sid] = []
+            pacientes_indices[sid].append(idx)
+            
+        if not pacientes_indices:
+            continue
+            
+        paciente_escolhido = max(pacientes_indices.keys(), key=lambda sid: len(pacientes_indices[sid]))
+        paciente_indices_lista = pacientes_indices[paciente_escolhido]
+        
+        paciente_indices_lista.sort(key=lambda idx: extract_slice_index(os.path.basename(dataset.samples[idx][0])))
+        
+        center_idx = len(paciente_indices_lista) // 2
+        start_idx = max(0, center_idx - (samples_per_class // 2))
+        end_idx = min(len(paciente_indices_lista), start_idx + samples_per_class)
+        
+        selected = paciente_indices_lista[start_idx:end_idx]
+        
+        class_indices[class_idx] = selected
+        
+    return class_indices

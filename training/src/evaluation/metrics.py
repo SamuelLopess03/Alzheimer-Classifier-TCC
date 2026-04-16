@@ -161,6 +161,10 @@ def evaluate_performance(
 def _roc_metrics_multiclass(y_true: np.ndarray, y_pred_proba: np.ndarray) -> Dict[str, Any]:
     num_classes = y_pred_proba.shape[1]
     y_true_bin = label_binarize(y_true, classes=list(range(num_classes)))
+    
+    if num_classes == 2 and y_true_bin.shape[1] == 1:
+        y_true_bin = np.concatenate((1 - y_true_bin, y_true_bin), axis=1)
+        
     roc_metrics = {}
 
     for i in range(num_classes):

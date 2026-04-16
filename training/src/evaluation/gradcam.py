@@ -12,6 +12,7 @@ from typing import Dict, List, Optional
 
 from ..models import get_target_layer
 from ..data.preprocessing import denormalize_images
+from ..data.subject_manager import get_central_slices_per_class, resolve_dataset_chain
 from src.utils.config import load_hyperparameters_config
 
 def _collect_class_samples(
@@ -20,21 +21,25 @@ def _collect_class_samples(
     num_classes: int, 
     samples_per_class: int
 ) -> Dict[int, List[torch.Tensor]]:
-    class_samples = {i: [] for i in range(num_classes)}
+    wrapper_dataset = getattr(test_loader, 'dataset', None)
     
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images = images.to(device)
-            labels = labels.cpu().numpy()
+    base_ds, base_indices = resolve_dataset_chain(wrapper_dataset)
 
-            for img, label in zip(images, labels):
-                if len(class_samples[label]) < samples_per_class:
-                    class_samples[label].append(img)
+    if base_ds and base_indices is None:
+        base_indices = np.arange(len(base_ds))
 
-            if all(len(samples) >= samples_per_class for samples in class_samples.values()):
-                break
-                
-    return class_samples
+    if base_ds and hasattr(base_ds, 'samples') and base_indices is not None:
+        class_indices = get_central_slices_per_class(base_ds, num_classes, samples_per_class, indices=base_indices)
+        
+        base_to_wrapper = {base_idx: i for i, base_idx in enumerate(base_indices)}
+        
+        return {
+            class_idx: [wrapper_dataset[base_to_wrapper[idx]][0].to(device) for idx in indices]
+            for class_idx, indices in class_indices.items()
+        }
+
+    print("[AVISO] Dataset raiz incompatível (sem 'samples'). O Grad-CAM não gerará imagens, pois o limite por paciente não pode ser garantido.")
+    return {i: [] for i in range(num_classes)}
 
 def run_single_gradcam(
     model: nn.Module,
@@ -65,6 +70,11 @@ def run_single_gradcam(
     grayscale_cam = cam(input_tensor=img_batch, targets=None)[0, :]
 
     img_np = img_tensor.cpu().numpy()
+    if img_np.ndim == 3 and img_np.shape[0] in [1, 3]:
+        img_np = np.transpose(img_np, (1, 2, 0))
+    if img_np.ndim == 3 and img_np.shape[-1] == 1:
+        img_np = img_np.squeeze(-1)
+
     img_uint8 = denormalize_images(img_np, mean=[0.449], std=[0.226])
     
     if img_uint8.ndim == 2:
@@ -85,8 +95,7 @@ def generate_gradcam_visualizations(
     class_names: list,
     save_path: str,
     architecture_name: str,
-    num_samples: int = 10,
-    samples_per_class: int = 2
+    samples_per_class: int = 10
 ) -> None:
     print(f"\n{'-' * 60}")
     print("GERANDO VISUALIZAÇÕES GRAD-CAM")
@@ -96,15 +105,15 @@ def generate_gradcam_visualizations(
     
     class_samples = _collect_class_samples(test_loader, device, len(class_names), samples_per_class)
     
-    sample_count = 0
     for class_idx, samples in class_samples.items():
         class_name = class_names[class_idx]
+        
+        class_save_path = os.path.join(save_path, class_name)
+        os.makedirs(class_save_path, exist_ok=True)
+        
         for idx, img_tensor in enumerate(samples):
-            if sample_count >= num_samples:
-                break
-            
             filename = f"gradcam_true_{class_name}_sample_{idx}.png"
-            dest = os.path.join(save_path, filename)
+            dest = os.path.join(class_save_path, filename)
             
             run_single_gradcam(
                 model=model,
@@ -113,7 +122,6 @@ def generate_gradcam_visualizations(
                 class_names=class_names,
                 save_path=dest
             )
-            sample_count += 1
 
     print(f"\nVisualizações Grad-CAM geradas em: {save_path}\n")
 
@@ -122,7 +130,7 @@ def log_gradcam_to_wandb(gradcam_path: str, model_type: str):
         return
 
     gradcam_images = []
-    for img_file in Path(gradcam_path).glob("*.png"):
+    for img_file in Path(gradcam_path).rglob("*.png"):
         gradcam_images.append(wandb.Image(str(img_file), caption=img_file.stem))
 
     if gradcam_images:

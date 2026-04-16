@@ -133,8 +133,7 @@ def evaluate_model(
                 class_names=class_names or None,
                 save_path=gradcam_output_path,
                 architecture_name=arch_name,
-                num_samples=gradcam_samples,
-                samples_per_class=max(2, gradcam_samples // max(len(class_names), 2))
+                samples_per_class=gradcam_samples
             )
         except Exception as e:
             print(f"Aviso: Grad-CAM falhou — {str(e)}\n")

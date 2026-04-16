@@ -95,7 +95,7 @@ def run_inference_pipeline(
     )
 
     checkpoint_dir = os.path.normpath(
-        os.path.join(os.path.dirname(__file__), "..", str(config['checkpoint']['save_path']))
+        os.path.join(os.path.dirname(__file__), str(config['checkpoint']['save_path']))
     )
     checkpoint_file = os.path.join(checkpoint_dir, "best_model.pth")
     
@@ -104,7 +104,7 @@ def run_inference_pipeline(
         return False
         
     print(f"Carregando pesos de: {checkpoint_file}")
-    checkpoint = torch.load(checkpoint_file, map_location=device)
+    checkpoint = torch.load(checkpoint_file, map_location=device, weights_only=True)
     model.load_state_dict(
         checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint
     )
@@ -126,7 +126,8 @@ def run_inference_pipeline(
         generate_gradcam=generate_gradcam,
         gradcam_samples=gradcam_samples,
         is_multiclass=is_multiclass,
-        criterion=criterion
+        criterion=criterion,
+        save_path=os.path.join(models_path, model_type)
     )
 
     if wandb_active:
