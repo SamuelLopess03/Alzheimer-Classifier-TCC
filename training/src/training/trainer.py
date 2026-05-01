@@ -28,7 +28,7 @@ def run_training_process(
         architecture_name: str,
         is_multiclass: bool = False,
         is_final_training: bool = False,
-        repetition_number: int = 1
+        fold_number: int = 1
 ) -> Dict:
     config = get_training_config(is_multiclass)
     hyperparams_config = load_hyperparameters_config()
@@ -51,7 +51,7 @@ def run_training_process(
     
     print(f"\n{'-' * 60}")
     print(f"INICIANDO TREINAMENTO {mode_str} ({model_type_str})")
-    print(f"Arquitetura: {architecture_name.upper()} | Repetição: {repetition_number}")
+    print(f"Arquitetura: {architecture_name.upper()} | Fold: {fold_number}")
     print(f"{'-' * 60}")
 
     scaler = GradScaler(device=device.type) if mixed_precision and device.type == 'cuda' else None
@@ -101,25 +101,25 @@ def run_training_process(
         metrics = evaluate_performance(
             y_true=y_true, y_pred=y_pred, y_prob=y_prob, 
             subject_ids=val_subject_ids, class_names=class_names,
-            val_loss=val_loss, repetition_number=repetition_number,
+            val_loss=val_loss, fold_number=fold_number,
             epoch_number=epoch + 1, is_multiclass=is_multiclass
         )
 
         history['train_loss'].append(train_loss)
         history['val_loss'].append(val_loss)
-        history['val_f1'].append(metrics['f1_score'])
+        history['val_f1'].append(metrics['f1_macro'])
 
         if config['logging']['wandb']['enabled'] and is_final_training:
             log_final_training_metrics(
                 metrics=metrics,
                 epoch=epoch + 1,
-                repetition=repetition_number,
+                fold_number=fold_number,
                 class_names=class_names,
                 train_loss=train_loss,
                 learning_rate=optimizer.param_groups[0]['lr']
             )
 
-        is_epoch_best = metrics['f1_score'] > best_f1_score
+        is_epoch_best = metrics['f1_macro'] > best_f1_score
         
         print_epoch_log(
             epoch=epoch + 1, 
@@ -131,7 +131,7 @@ def run_training_process(
         )
 
         if is_epoch_best:
-            best_f1_score = metrics['f1_score']
+            best_f1_score = metrics['f1_macro']
             best_metrics = metrics
             patience_counter = 0
             

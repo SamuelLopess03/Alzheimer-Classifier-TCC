@@ -141,7 +141,8 @@ optimizer_config:
 # ------------------------------------------------------------
 search_strategy:
   max_combinations: 60
-  n_repetitions: 3
+  validation_strategy: "kfold"
+  n_folds: 5
 
 # ------------------------------------------------------------
 # 8. RESULTADOS E SAÍDA

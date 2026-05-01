@@ -86,47 +86,54 @@ def run_inference_pipeline(
     test_dataset = load_test_dataset(data_path, model_type)
     print(f"Dataset de teste carregado: {len(test_dataset)} amostras.")
 
-    model, criterion, _ = create_model_with_architecture(
-        hyperparams=hyperparams,
-        architecture_name=architecture_name,
-        class_names=class_names,
-        device=device,
-        train_dataset=test_dataset
-    )
-
     checkpoint_dir = os.path.normpath(
         os.path.join(os.path.dirname(__file__), str(config['checkpoint']['save_path']))
     )
-    checkpoint_file = os.path.join(checkpoint_dir, "best_model.pth")
     
-    if not os.path.exists(checkpoint_file):
-        print(f"Erro: Arquivo de pesos não encontrado em {checkpoint_file}")
+    # Busca todos os pesos dos folds (Ensemble)
+    import glob
+    checkpoint_files = sorted(glob.glob(os.path.join(checkpoint_dir, "best_model_fold_*.pth")))
+    
+    if not checkpoint_files:
+        print(f"Erro: Nenhum arquivo de pesos encontrado em {checkpoint_dir}")
         return False
         
-    print(f"Carregando pesos de: {checkpoint_file}")
-    checkpoint = torch.load(checkpoint_file, map_location=device, weights_only=True)
-    model.load_state_dict(
-        checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint
-    )
-    model.eval()
-
-    model.architecture_name = architecture_name
-    model.hyperparameters = hyperparams
-    model.class_names = class_names
+    print(f"Encontrados {len(checkpoint_files)} modelos para o ensemble:")
+    
+    ensemble_models = []
+    for ckpt_file in checkpoint_files:
+        print(f"  Carregando: {os.path.basename(ckpt_file)}")
+        model, criterion, _ = create_model_with_architecture(
+            hyperparams=hyperparams,
+            architecture_name=architecture_name,
+            class_names=class_names,
+            device=device,
+            train_dataset=test_dataset
+        )
+        checkpoint = torch.load(ckpt_file, map_location=device, weights_only=True)
+        model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
+        model.eval()
+        
+        # Injetar metadados necessários para o evaluator
+        model.architecture_name = architecture_name
+        model.hyperparameters = hyperparams
+        model.class_names = class_names
+        ensemble_models.append(model)
 
     wandb_active = _open_wandb_inference_run(
         config, architecture_name, model_type, hyperparams, models_path
     )
 
-    print_section("EXECUTANDO AVALIAÇÃO NO TEST SET")
-    evaluation_results = evaluate_model(
-        model=model,
+    print_section("EXECUTANDO AVALIAÇÃO ENSEMBLE NO TEST SET")
+    from .evaluator import evaluate_ensemble
+    
+    evaluation_results = evaluate_ensemble(
+        models=ensemble_models,
         test_dataset=test_dataset,
         device=device,
         generate_gradcam=generate_gradcam,
         gradcam_samples=gradcam_samples,
         is_multiclass=is_multiclass,
-        criterion=criterion,
         save_path=os.path.join(models_path, model_type)
     )
 

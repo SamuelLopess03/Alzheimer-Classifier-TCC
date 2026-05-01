@@ -13,7 +13,7 @@ def print_section(title: str):
     print(f"{title}")
     print(f"{'-' * 60}\n")
 
-def print_repetition_summary(aggregated: Dict[str, Any], index: int):
+def print_fold_summary(aggregated: Dict[str, Any], index: int):
     print(f"\nAgregação da Combinação #{index + 1}")
     print(f"  {'Metric':<20} | {'Mean':<10} | {'Std':<10}")
     print(f"  {'-' * 45}")
@@ -93,16 +93,17 @@ def print_detailed_metrics(metrics: Dict[str, Any], class_names: List[str] = Non
 
 def print_epoch_log(epoch: int, num_epochs: int, train_loss: float, metrics: Dict[str, Any], patience: int, is_best: bool = False):
     val_loss = metrics.get('val_loss', 0.0)
-    val_f1 = metrics.get('f1_score', 0.0)
+    val_f1_macro = metrics.get('f1_macro', 0.0)
+    val_f1_weighted = metrics.get('f1_score', 0.0) # f1_score is weighted
     val_acc = metrics.get('accuracy', 0.0)
     val_bacc = metrics.get('balanced_accuracy', 0.0)
     
     status_indicator = "[BEST]" if is_best else "      "
     
-    print(f"| Epoch {epoch:03d}/{num_epochs:03d} "
+    print(f"| Ep {epoch:03d}/{num_epochs:03d} "
           f"Loss: {train_loss:.4f}/{val_loss:.4f} | "
-          f"F1: {val_f1*100:5.2f}% | "
-          f"Acc: {val_acc*100:5.2f}% | "
-          f"B.Acc: {val_bacc*100:5.2f}% | "
-          f"Patience: {patience:2d} | "
+          f"F1(M/W): {val_f1_macro*100:4.1f}/{val_f1_weighted*100:4.1f}% | "
+          f"Acc: {val_acc*100:4.1f}% | "
+          f"B.Acc: {val_bacc*100:4.1f}% | "
+          f"Pat: {patience:d} | "
           f"{status_indicator}")

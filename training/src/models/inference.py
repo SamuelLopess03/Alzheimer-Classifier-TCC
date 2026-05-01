@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import os
+import glob
 from typing import Tuple, Optional, Dict, List, Any
 from pathlib import Path
 from PIL import Image
@@ -33,8 +34,9 @@ class InferenceWrapper(nn.Module):
             device = get_pytorch_device()
         self.device = device
         
-        self.binary_model = None
-        self.multiclass_model = None
+        # Agora são listas de modelos (Ensemble)
+        self.binary_models = []
+        self.multiclass_models = []
         
         self.transform = transforms.Compose([
             transforms.Resize((224, 224)),
@@ -42,20 +44,21 @@ class InferenceWrapper(nn.Module):
             transforms.Normalize(mean=[0.449], std=[0.226])
         ])
 
-    def load_models(self, binary_path: str = None, multiclass_path: str = None):
-        print(f"\n{'=' * 60}\nINICIALIZANDO SISTEMA DE INFERÊNCIA EM CASCATA\n{'=' * 60}")
+    def load_models(self):
+        print(f"\n{'=' * 60}\nINICIALIZANDO SISTEMA DE INFERÊNCIA EM CASCATA (ENSEMBLE)\n{'=' * 60}")
 
-        binary_path = binary_path or self._resolve_checkpoint_path(self.binary_config)
-        multiclass_path = multiclass_path or self._resolve_checkpoint_path(self.multiclass_config)
+        # Resolve diretórios de checkpoints
+        binary_dir = self._resolve_checkpoint_dir(self.binary_config)
+        multiclass_dir = self._resolve_checkpoint_dir(self.multiclass_config)
 
-        self.binary_model = self._load_model_from_checkpoint(binary_path, 'binary')
-        self.multiclass_model = self._load_model_from_checkpoint(multiclass_path, 'multiclass')
+        # Carrega Ensembles
+        self.binary_models = self._load_ensemble(binary_dir, 'binary')
+        self.multiclass_models = self._load_ensemble(multiclass_dir, 'multiclass')
 
-        print(f"\n{'=' * 60}\nSISTEMA PRONTO PARA PREDIÇÃO\n{'=' * 60}")
+        print(f"\n{'=' * 60}\nSISTEMA ENSEMBLE PRONTO PARA PREDIÇÃO\n{'=' * 60}")
 
     def predict_image(self, image_path: str) -> Dict:
         img_tensor = self._load_and_preprocess_image(image_path)
-
         return self._predict(img_tensor)
 
     def predict_subject_folder(self, folder_path: str) -> Dict:
@@ -77,45 +80,57 @@ class InferenceWrapper(nn.Module):
 
     def _load_and_preprocess_image(self, path: str) -> torch.Tensor:
         img = Image.open(path).convert('L')
-
         return self.transform(img).unsqueeze(0)
 
     def _predict(self, x: torch.Tensor) -> Dict:
         x = x.to(self.device)
-        binary_output, multiclass_output = self._forward(x)
+        binary_probs, multiclass_probs = self._forward_ensemble(x)
 
+        # Pegamos a média se houver múltiplas fatias (aqui é só 1)
         return self._format_prediction_result(
-            binary_probs=torch.softmax(binary_output, dim=1)[0],
-            multiclass_probs=torch.softmax(multiclass_output, dim=1)[0] if multiclass_output is not None else None
+            binary_probs=binary_probs[0],
+            multiclass_probs=multiclass_probs[0] if multiclass_probs is not None else None
         )
 
     def _predict_subject(self, x: torch.Tensor) -> Dict:
         x = x.to(self.device)
-        binary_output, multiclass_output = self._forward(x)
+        binary_probs, multiclass_probs = self._forward_ensemble(x)
 
-        binary_probs_avg = torch.softmax(binary_output, dim=1).mean(dim=0)
+        # Média das probabilidades de todas as fatias do sujeito
+        binary_probs_avg = binary_probs.mean(dim=0)
         multiclass_probs_avg = None
-        if multiclass_output is not None:
-            multiclass_probs_avg = torch.softmax(multiclass_output, dim=1).mean(dim=0)
+        if multiclass_probs is not None:
+            multiclass_probs_avg = multiclass_probs.mean(dim=0)
 
         return self._format_prediction_result(
             binary_probs=binary_probs_avg,
             multiclass_probs=multiclass_probs_avg
         )
 
-    def _forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        if self.binary_model is None or self.multiclass_model is None:
+    def _forward_ensemble(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        if not self.binary_models or not self.multiclass_models:
             raise RuntimeError("Modelos não carregados. Chame load_models() primeiro.")
 
         with torch.no_grad():
-            binary_output = self.binary_model(x)
-            binary_pred = torch.argmax(binary_output, dim=1)
+            # 1. Predição Binária Ensemble (Soft Voting)
+            all_bin_probs = []
+            for model in self.binary_models:
+                output = model(x)
+                all_bin_probs.append(torch.softmax(output, dim=1))
+            
+            avg_binary_probs = torch.stack(all_bin_probs).mean(dim=0)
+            binary_pred = torch.argmax(avg_binary_probs, dim=1)
 
-            multiclass_output = None
-            if torch.any(binary_pred == 0):
-                multiclass_output = self.multiclass_model(x)
+            # 2. Predição Multiclasse Ensemble (se necessário)
+            avg_multiclass_probs = None
+            if torch.any(binary_pred == 0): # Se algum foi predito como demente
+                all_multi_probs = []
+                for model in self.multiclass_models:
+                    output = model(x)
+                    all_multi_probs.append(torch.softmax(output, dim=1))
+                avg_multiclass_probs = torch.stack(all_multi_probs).mean(dim=0)
 
-            return binary_output, multiclass_output
+            return avg_binary_probs, avg_multiclass_probs
 
     def _format_prediction_result(self, binary_probs: torch.Tensor, multiclass_probs: Optional[torch.Tensor]) -> Dict:
         binary_class_idx = torch.argmax(binary_probs).item()
@@ -146,60 +161,63 @@ class InferenceWrapper(nn.Module):
 
         return result
 
-    def _load_model_from_checkpoint(self, path: str, model_type: str) -> nn.Module:
-        checkpoint = torch.load(path, map_location=self.device, weights_only=True)
-        arch_name = checkpoint['architecture_name']
-        hparams = checkpoint['hyperparameters']
-        
-        model = create_model(
-            architecture_name=arch_name,
-            hidden_units=hparams['hidden_units'],
-            dropout=hparams['dropout'],
-            num_classes=checkpoint['num_classes'],
-            device=self.device,
-            verbose=False
-        )
-        
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
-        return model
+    def _load_ensemble(self, directory: str, model_type: str) -> List[nn.Module]:
+        ckpt_files = sorted(glob.glob(os.path.join(directory, "best_model_fold_*.pth")))
+        if not ckpt_files:
+            raise FileNotFoundError(f"Nenhum checkpoint de fold encontrado em {directory}")
+            
+        print(f"Carregando Ensemble {model_type.upper()} ({len(ckpt_files)} modelos)...")
+        models = []
+        for path in ckpt_files:
+            checkpoint = torch.load(path, map_location=self.device, weights_only=True)
+            arch_name = checkpoint['architecture_name']
+            hparams = checkpoint['hyperparameters']
+            
+            model = create_model(
+                architecture_name=arch_name,
+                hidden_units=hparams['hidden_units'],
+                dropout=hparams['dropout'],
+                num_classes=checkpoint['num_classes'],
+                device=self.device,
+                verbose=False
+            )
+            model.load_state_dict(checkpoint['model_state_dict'])
+            model.eval()
+            models.append(model)
+        return models
 
-    def _resolve_checkpoint_path(self, config: Dict) -> str:
-        checkpoint_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), str(config['checkpoint']['save_path'])))
-        
-        return str(Path(checkpoint_dir) / "best_model.pth")
+    def _resolve_checkpoint_dir(self, config: Dict) -> str:
+        return os.path.normpath(os.path.join(os.path.dirname(__file__), str(config['checkpoint']['save_path'])))
 
     def generate_gradcam(self, image_path: str, save_dir: str, subject_name: str, slice_index: int, requires_multiclass: bool):
-        if self.binary_model is None: raise RuntimeError("Modelos não carregados.")
+        if not self.binary_models: raise RuntimeError("Modelos não carregados.")
         os.makedirs(save_dir, exist_ok=True)
         
         img_tensor = self._load_and_preprocess_image(image_path).to(self.device).squeeze(0)
-        
         file_name = f"{subject_name}_slice_{slice_index:02d}.png"
         
-        if requires_multiclass and self.multiclass_model:
-            run_single_gradcam(
-                model=self.multiclass_model, img_tensor=img_tensor, device=self.device,
-                class_names=self.multiclass_class_names, save_path=os.path.join(save_dir, file_name)
-            )
-        else:
-            run_single_gradcam(
-                model=self.binary_model, img_tensor=img_tensor, device=self.device,
-                class_names=self.binary_class_names, save_path=os.path.join(save_dir, file_name)
-            )
+        # No ensemble, o Grad-CAM é gerado usando todos os modelos para criar o mapa consensual
+        target_models = self.multiclass_models if (requires_multiclass and self.multiclass_models) else self.binary_models
+        class_names = self.multiclass_class_names if (requires_multiclass and self.multiclass_models) else self.binary_class_names
+
+        from ..evaluation.gradcam import run_ensemble_gradcam
+        run_ensemble_gradcam(
+            models=target_models, img_tensor=img_tensor, device=self.device,
+            class_names=class_names, save_path=os.path.join(save_dir, file_name)
+        )
 
     def print_prediction(self, result: Dict):
         print(f"\n[{'=' * 60}]")
-        print("RESULTADO DO DIAGNÓSTICO CLÍNICO")
+        print("RESULTADO DO DIAGNÓSTICO CLÍNICO (ENSEMBLE)")
         print(f"[{'=' * 60}]\n")
         
-        print("1. Avaliação Primária (Binária):")
+        print("1. Avaliação Primária (Binária Ensemble):")
         bin_pred = result['binary_prediction']
         print(f"   => Classe: {bin_pred['class_name']}")
         print(f"   => Confiança: {bin_pred['confidence'] * 100:.2f}%")
         
         if result['requires_multiclass']:
-            print("\n2. Avaliação Secundária (Multiclasse - Estagiamento):")
+            print("\n2. Avaliação Secundária (Multiclasse Ensemble - Estagiamento):")
             multi_pred = result['multiclass_prediction']
             print(f"   => Estágio: {multi_pred['class_name']}")
             print(f"   => Confiança: {multi_pred['confidence'] * 100:.2f}%")

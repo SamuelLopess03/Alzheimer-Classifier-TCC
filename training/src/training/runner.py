@@ -22,7 +22,7 @@ from src.visualization.terminal import (
     print_search_summary
 )
 from ..models import create_model_with_architecture
-from ..data.dataset_wrappers import create_stratified_holdout_split
+from ..data.dataset_wrappers import create_kfold_splits
 from ..visualization.wandb_logger import init_wandb_run, finish_wandb_run
 
 def run_training_flow(model_type: str, data_path: str) -> bool:
@@ -90,54 +90,58 @@ def run_final_training_flow(model_type: str, experiments_path: str, data_path: s
     
     print_class_distribution(train_dataset, config['model']['class_names'])
 
-    train_ratio = config['data']['split_ratios']['train']
-    val_ratio = config['data']['split_ratios']['train_val']
+    print_section("CONFIGURANDO SPLIT K-FOLD PARA ENSEMBLE")
     
-    # Amostragem generalizada (limita fatias contíguas redundantes)
-    train_split, val_split = create_stratified_holdout_split(
-        train_dataset, 
-        train_ratio, 
-        val_ratio, 
+    all_folds = create_kfold_splits(
+        dataset=train_dataset,
+        n_folds=5,
         random_state=config['data']['random_seed'],
-        max_slices_per_subject=config['data'].get('max_slices_per_subject')
+        max_slices_per_subject=config['data'].get('max_slices_per_subject'),
+        minority_classes=config['data'].get('minority_classes', [0]),
+        architecture_name=architecture_name,
+        minority_config=config['data']['minority_augmentation'] if config['data']['minority_augmentation'].get('enabled') else None
     )
 
-    print_section("CONFIGURANDO MODELO FINAL")
-    model, criterion, optimizer = create_model_with_architecture(
-        hyperparams=hyperparams,
-        architecture_name=architecture_name,
-        class_names=config['model']['class_names'],
-        device=device,
-        train_dataset=train_dataset
-    )
+    ensemble_results = []
     
-    print_section("EXECUTANDO TREINAMENTO DE PRODUÇÃO")
-    
-    wandb_cfg = config.get('logging', {}).get('wandb', {})
-    if wandb_cfg.get('enabled', False):
-        init_wandb_run(
-            project_name=wandb_cfg['project'],
-            run_name=f"{architecture_name}_{model_type}_final",
-            config={"architecture": architecture_name, "model_type": model_type, **hyperparams},
-            entity=wandb_cfg.get('entity'),
-            tags=["final_training", architecture_name, model_type],
-            group=f"final_training/{model_type}"  # Pasta dedicada no WandB
+    for fold_idx, (train_split, val_split) in enumerate(all_folds, start=1):
+        print_section(f"TREINANDO MODELO DO FOLD {fold_idx}/{len(all_folds)}")
+        
+        model, criterion, optimizer = create_model_with_architecture(
+            hyperparams=hyperparams,
+            architecture_name=architecture_name,
+            class_names=config['model']['class_names'],
+            device=device,
+            train_dataset=train_split
         )
+        
+        if wandb_cfg.get('enabled', False):
+            init_wandb_run(
+                project_name=wandb_cfg['project'],
+                run_name=f"{architecture_name}_{model_type}_fold_{fold_idx}",
+                config={"architecture": architecture_name, "model_type": model_type, "fold": fold_idx, **hyperparams},
+                entity=wandb_cfg.get('entity'),
+                tags=["final_training", "ensemble", architecture_name, model_type],
+                group=f"final_training/{model_type}"
+            )
 
-    result = run_training_process(
-        model=model,
-        criterion=criterion,
-        optimizer=optimizer,
-        train_split=train_split,
-        val_split=val_split,
-        device=device,
-        hyperparams=hyperparams,
-        architecture_name=architecture_name,
-        is_multiclass=is_multiclass,
-        is_final_training=True
-    )
+        result = run_training_process(
+            model=model,
+            criterion=criterion,
+            optimizer=optimizer,
+            train_split=train_split,
+            val_split=val_split,
+            device=device,
+            hyperparams=hyperparams,
+            architecture_name=architecture_name,
+            is_multiclass=is_multiclass,
+            is_final_training=True,
+            fold_number=fold_idx
+        )
+        ensemble_results.append(result)
+        
+        if wandb_cfg.get('enabled', False):
+            finish_wandb_run()
 
-    finish_wandb_run()
-
-    print_banner("TREINAMENTO FINAL CONCLUÍDO!", f"Modelo salvo em: {result.get('checkpoint_path', 'N/A')}")
+    print_banner("TREINAMENTO FINAL (ENSEMBLE) CONCLUÍDO!", f"{len(ensemble_results)} modelos salvos.")
     return True

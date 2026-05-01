@@ -103,7 +103,7 @@ def evaluate_performance(
         class_names: Optional[List[str]] = None,
         val_loss: float = 0.0,
         is_multiclass: bool = False,
-        repetition_number: int = 1,
+        fold_number: int = 1,
         epoch_number: int = 1
 ) -> Dict[str, Any]:
     if len(y_true) != len(subject_ids):
@@ -133,7 +133,7 @@ def evaluate_performance(
     error_metrics = _compute_base_error_metrics(cm, is_multiclass, y_subj_true, y_subj_pred)
     
     metrics = {
-        'repetition': int(repetition_number),
+        'fold': int(fold_number),
         'epoch': int(epoch_number),
         'val_loss': float(val_loss),
         'accuracy': float(accuracy),
@@ -257,12 +257,12 @@ def calculate_combined_score(aggregated_metrics: Dict[str, float], is_multiclass
         
     return _calculate_combined_score_binary(aggregated_metrics)
 
-def aggregate_repetition_metrics(repetition_results: List[Dict], is_multiclass: bool = False) -> Dict[str, Any]:
-    if not repetition_results:
+def aggregate_fold_metrics(fold_results: List[Dict], is_multiclass: bool = False) -> Dict[str, Any]:
+    if not fold_results:
         return {}
 
     best_metrics_list = [
-        r['best_metrics'] for r in repetition_results if r.get('best_metrics')
+        r['best_metrics'] for r in fold_results if r.get('best_metrics')
     ]
 
     if not best_metrics_list:
@@ -283,7 +283,7 @@ def aggregate_repetition_metrics(repetition_results: List[Dict], is_multiclass: 
         'std_loss': float(np.std([m['val_loss'] for m in best_metrics_list])),
         'mean_mcc': float(np.mean([m.get('matthews_correlation_coefficient', 0.0) for m in best_metrics_list])),
         'std_mcc': float(np.std([m.get('matthews_correlation_coefficient', 0.0) for m in best_metrics_list])),
-        'n_repetitions': len(repetition_results)
+        'n_folds': len(fold_results)
     }
 
     if 'specificity' in best_metrics_list[0]:

@@ -3,20 +3,20 @@ import os
 from typing import Dict, List, Optional, Any
 from dotenv import load_dotenv
 
-def log_search_repetition_progress(
-    repetition_results: List[Dict],
+def log_search_fold_progress(
+    fold_results: List[Dict],
     combination_index: int,
     is_multiclass: bool
 ):
-    if wandb.run is None or not repetition_results:
+    if wandb.run is None or not fold_results:
         return
 
-    from ..evaluation import aggregate_repetition_metrics
-    aggregated = aggregate_repetition_metrics(repetition_results, is_multiclass)
+    from ..evaluation import aggregate_fold_metrics
+    aggregated = aggregate_fold_metrics(fold_results, is_multiclass)
 
     wandb.run.summary.update({
         "search/combination_index": combination_index,
-        "search/repetitions_done":  len(repetition_results)
+        "search/folds_done":  len(fold_results)
     })
 
     metrics_to_log = {
@@ -27,12 +27,12 @@ def log_search_repetition_progress(
     }
     wandb.log(metrics_to_log)
 
-    columns = ["Repetition", "F1", "Balanced Acc", "Accuracy", "MCC", "Loss"]
+    columns = ["Fold", "F1", "Balanced Acc", "Accuracy", "MCC", "Loss"]
     table_data = []
-    for res in repetition_results:
+    for res in fold_results:
         m = res.get('best_metrics', {})
         table_data.append([
-            f"Rep {res['repetition']}",
+            f"Fold {res['fold']}",
             round(m.get('f1_score', 0.0), 4),
             round(m.get('balanced_accuracy', 0.0), 4),
             round(m.get('accuracy', 0.0), 4),
@@ -51,12 +51,12 @@ def log_search_repetition_progress(
 
     table = wandb.Table(columns=columns, data=table_data)
     
-    wandb.log({"repetition_summary": table})
+    wandb.log({"fold_summary": table})
 
 def log_final_training_metrics(
         metrics: Dict,
         epoch: int,
-        repetition: int,
+        fold_number: int,
         class_names: List[str],
         train_loss: float = None,
         learning_rate: float = None
@@ -64,7 +64,7 @@ def log_final_training_metrics(
     if wandb.run is None:
         return
 
-    prefix = f"rep_{repetition}"
+    prefix = f"fold_{fold_number}"
 
     log_dict = {
         "epoch": epoch,

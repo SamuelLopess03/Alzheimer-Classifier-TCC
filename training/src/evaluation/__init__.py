@@ -1,6 +1,6 @@
 from .metrics import (
     calculate_roc_metrics,
-    aggregate_repetition_metrics,
+    aggregate_fold_metrics,
     calculate_combined_score,
     evaluate_performance
 )
@@ -13,7 +13,7 @@ from .pipeline import (
 
 from .evaluator import (
     evaluate_model,
-    evaluate_on_test_set
+    evaluate_ensemble
 )
 
 from .reporter import (
@@ -29,7 +29,7 @@ from .gradcam import (
 __all__ = [
     # Metrics Functions
     "calculate_roc_metrics",
-    "aggregate_repetition_metrics",
+    "aggregate_fold_metrics",
     "calculate_combined_score",
     "evaluate_performance",
 
@@ -40,7 +40,7 @@ __all__ = [
 
     # Evaluator Functions
     "evaluate_model",
-    "evaluate_on_test_set",
+    "evaluate_ensemble",
 
     # Reporter Functions
     "print_test_metrics_summary",

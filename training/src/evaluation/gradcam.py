@@ -8,7 +8,7 @@ from pathlib import Path
 from torch.utils.data import DataLoader
 from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from ..models import get_target_layer
 from ..data.preprocessing import denormalize_images
@@ -49,26 +49,50 @@ def run_single_gradcam(
     save_path: str,
     target_layer_path: Optional[str] = None
 ) -> str:
-    model.eval()
+    """Gera Grad-CAM para um único modelo."""
+    return run_ensemble_gradcam(
+        models=[model],
+        img_tensor=img_tensor,
+        device=device,
+        class_names=class_names,
+        save_path=save_path,
+        target_layer_path=target_layer_path
+    )
+
+def run_ensemble_gradcam(
+    models: List[nn.Module],
+    img_tensor: torch.Tensor,
+    device: torch.device,
+    class_names: List[str],
+    save_path: str,
+    target_layer_path: Optional[str] = None
+) -> str:
+    """Gera o mapa consensual do Ensemble (média dos mapas de calor)."""
+    for m in models: m.eval()
     
+    img_batch = img_tensor.unsqueeze(0).to(device)
+    all_grayscale_cams = []
+
+    # Configuração da arquitetura baseada no primeiro modelo
     if target_layer_path is None:
-        arch_name = getattr(model, 'architecture_name', 'resnet50').lower()
+        arch_name = getattr(models[0], 'architecture_name', 'resnet50').lower()
         hyperparams_config = load_hyperparameters_config()
         arch_cfg = hyperparams_config['model_config'].get(arch_name)
         target_layer_path = arch_cfg.get('gradcam_target_layer') if arch_cfg else None
 
-    target_layer = get_target_layer(model, target_layer_path)
-    cam = GradCAM(model=model, target_layers=[target_layer])
+    # Acumula os mapas de calor de todos os modelos
+    for model in models:
+        target_layer = get_target_layer(model, target_layer_path)
+        cam = GradCAM(model=model, target_layers=[target_layer])
+        
+        # O Grad-CAM gera um mapa de 0 a 1 para a entrada
+        grayscale_cam = cam(input_tensor=img_batch, targets=None)[0, :]
+        all_grayscale_cams.append(grayscale_cam)
 
-    img_batch = img_tensor.unsqueeze(0).to(device)
-    
-    with torch.no_grad():
-        output = model(img_batch)
-        pred_class = output.argmax(dim=1).item()
-        pred_prob = torch.softmax(output, dim=1)[0, pred_class].item()
+    # Média dos mapas de calor (Consenso do Ensemble)
+    ensemble_grayscale_cam = np.mean(all_grayscale_cams, axis=0)
 
-    grayscale_cam = cam(input_tensor=img_batch, targets=None)[0, :]
-
+    # Preparação da imagem original para overlay
     img_np = img_tensor.cpu().numpy()
     if img_np.ndim == 3 and img_np.shape[0] in [1, 3]:
         img_np = np.transpose(img_np, (1, 2, 0))
@@ -83,13 +107,15 @@ def run_single_gradcam(
         img_rgb = img_uint8
 
     img_rgb = img_rgb.astype(np.float32) / 255.0
-    visualization = show_cam_on_image(img_rgb, grayscale_cam, use_rgb=True)
+    
+    # Renderiza o mapa consensual sobre a imagem
+    visualization = show_cam_on_image(img_rgb, ensemble_grayscale_cam, use_rgb=True)
     
     cv2.imwrite(save_path, cv2.cvtColor(visualization, cv2.COLOR_RGB2BGR))
     return save_path
 
 def generate_gradcam_visualizations(
-    model: nn.Module,
+    models: Union[nn.Module, List[nn.Module]],
     test_loader: DataLoader,
     device: torch.device,
     class_names: list,
@@ -97,26 +123,28 @@ def generate_gradcam_visualizations(
     architecture_name: str,
     samples_per_class: int = 10
 ) -> None:
+    if not isinstance(models, list):
+        models = [models]
+
     print(f"\n{'-' * 60}")
-    print("GERANDO VISUALIZAÇÕES GRAD-CAM")
+    print(f"GERANDO VISUALIZAÇÕES GRAD-CAM (ENSEMBLE: {len(models)} modelos)")
     print(f"{'-' * 60}\n")
 
-    model.architecture_name = architecture_name
+    for m in models: m.architecture_name = architecture_name
     
     class_samples = _collect_class_samples(test_loader, device, len(class_names), samples_per_class)
     
     for class_idx, samples in class_samples.items():
         class_name = class_names[class_idx]
-        
         class_save_path = os.path.join(save_path, class_name)
         os.makedirs(class_save_path, exist_ok=True)
         
         for idx, img_tensor in enumerate(samples):
-            filename = f"gradcam_true_{class_name}_sample_{idx}.png"
+            filename = f"gradcam_ensemble_{class_name}_sample_{idx}.png"
             dest = os.path.join(class_save_path, filename)
             
-            run_single_gradcam(
-                model=model,
+            run_ensemble_gradcam(
+                models=models,
                 img_tensor=img_tensor,
                 device=device,
                 class_names=class_names,
