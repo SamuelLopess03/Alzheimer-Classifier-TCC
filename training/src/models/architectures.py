@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import re
 import numpy as np
 from typing import Dict, Tuple, List, Optional
 from sklearn.utils.class_weight import compute_class_weight
@@ -11,21 +12,47 @@ from src.utils.config import load_hyperparameters_config
 
 def _handle_freezing(model: nn.Module, architecture_name: str, arch_cfg: Dict, verbose: bool = True):
     freeze_backbone = arch_cfg.get('freeze_backbone', False)
+    strategy = arch_cfg.get('unfreeze_strategy', 'none').lower()
+    unfreeze_layers = arch_cfg.get('unfreeze_layers', [])
     classifier_layer = arch_cfg.get('classifier_layer', 'fc')
     
+    # Prioridade para o freeze_backbone antigo se for True
     if freeze_backbone:
+        strategy = 'none'
+
+    if strategy == 'full':
+        for param in model.parameters():
+            param.requires_grad = True
+        if verbose: print(f"Treinamento TOTAL habilitado para {architecture_name}")
+        
+    elif strategy == 'partial':
+        # Congela tudo primeiro
         for param in model.parameters():
             param.requires_grad = False
             
+        # Descongela as camadas especificadas (suporta Regex) e o head
         for name, param in model.named_parameters():
-            if classifier_layer in name or any(k in name for k in ['classifier', 'fc', 'head']):
+            # Match rigoroso para o head: deve ser o nome exato ou estar no final/início do nome
+            is_head = any(re.search(rf"(^|\.){k}(\.|$)", name) for k in [classifier_layer, 'classifier', 'fc', 'head'])
+            is_target = any(re.search(layer, name) for layer in unfreeze_layers)
+            
+            if is_head or is_target:
                 param.requires_grad = True
-                
-        if verbose: print(f"Backbone TOTALMENTE congelado para {architecture_name} (apenas o head será treinado)")
-    else:
+        
+        if verbose:
+            trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            total = sum(p.numel() for p in model.parameters())
+            print(f"Fine-Tuning PARCIAL habilitado para {architecture_name}")
+            print(f"   Camadas desbloqueadas: {unfreeze_layers} + Head")
+            print(f"   Ratio de Parâmetros Treináveis: {trainable/total*100:.1f}%")
+            
+    else: # strategy == 'none'
         for param in model.parameters():
-            param.requires_grad = True
-        if verbose: print(f"Treinamento TOTAL (Backbone + Head) habilitado para {architecture_name}")
+            param.requires_grad = False
+        for name, param in model.named_parameters():
+            if any(re.search(rf"(^|\.){k}(\.|$)", name) for k in [classifier_layer, 'classifier', 'fc', 'head']):
+                param.requires_grad = True
+        if verbose: print(f"Backbone TOTALMENTE congelado para {architecture_name} (apenas o head será treinado)")
 
 def create_model(
         architecture_name: str,

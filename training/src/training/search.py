@@ -62,11 +62,51 @@ class SearchCheckpointManager:
             print(f"Erro ao carregar estado em {state_file}: {e}. Iniciando novo estado.")
             return set(), default_results
 
-    def save_combination(self, key: str, idx: int, params: Dict, metrics: Dict):
+    def save_combination_init(self, key: str, idx: int, params: Dict):
+        """Inicializa o arquivo da combinação com os parâmetros."""
         result_file = self.get_search_directory(key) / f'combination_{idx}.json'
-        result = {'combination_index': idx, 'params': params, 'aggregated_metrics': metrics}
+        result = {
+            'combination_index': idx,
+            'params': params,
+            'folds': {},
+            'status': 'in_progress'
+        }
         with open(result_file, 'w') as f:
             json.dump(result, f, indent=2)
+
+    def save_fold_result(self, key: str, combo_idx: int, fold_idx: int, result: Dict):
+        """Injeta o resultado de um fold específico dentro do arquivo da combinação."""
+        result_file = self.get_search_directory(key) / f'combination_{combo_idx}.json'
+        
+        if not result_file.exists():
+            return
+
+        # Limpa o histórico para não poluir o JSON
+        clean_result = {k: v for k, v in result.items() if k != 'history'}
+
+        with open(result_file, 'r') as f:
+            data = json.load(f)
+        
+        data['folds'][str(fold_idx)] = clean_result
+        
+        with open(result_file, 'w') as f:
+            json.dump(data, f, indent=2, default=str)
+
+    def save_combination_final(self, key: str, idx: int, metrics: Dict):
+        """Finaliza o arquivo da combinação adicionando as métricas agregadas."""
+        result_file = self.get_search_directory(key) / f'combination_{idx}.json'
+        
+        if not result_file.exists():
+            return
+
+        with open(result_file, 'r') as f:
+            data = json.load(f)
+        
+        data['aggregated_metrics'] = metrics
+        data['status'] = 'completed'
+        
+        with open(result_file, 'w') as f:
+            json.dump(data, f, indent=2, default=str)
 
 def _initialize_search_session(architecture_name: str, model_type: str, n_folds: int, max_combos: int):
     model_type_display = model_type.upper()
@@ -91,9 +131,10 @@ def _prepare_search_splits(train_dataset, n_folds: int, config: Dict, architectu
     )
     return folds
 
-def _run_combination_folds(idx, params, n_folds, all_splits, architecture_name, class_names, device, model_type):
+def _run_combination_folds(idx, params, n_folds, all_splits, architecture_name, class_names, device, model_type, checkpoint_manager):
     fold_results = []
     is_multiclass = (model_type == 'multiclass')
+    checkpoint_key = f"{architecture_name}_{model_type}"
 
     for fold_idx in range(n_folds):
         print(f"\nFold {fold_idx + 1}/{n_folds}")
@@ -114,6 +155,13 @@ def _run_combination_folds(idx, params, n_folds, all_splits, architecture_name, 
             result.update({'fold': fold_idx + 1, 'model_type': model_type})
             fold_results.append(result)
 
+            # SALVAMENTO PARCIAL: Salva o resultado deste fold imediatamente
+            checkpoint_manager.save_fold_result(checkpoint_key, idx + 1, fold_idx + 1, result)
+            
+            # Print rápido do desempenho do fold
+            f1_key = 'macro_f1' if is_multiclass else 'f1_score'
+            print(f"  > [OK] Fold {fold_idx + 1} concluído. {f1_key.replace('_', ' ').upper()}: {result.get(f1_key, 0):.4f}")
+
             if wandb.run:
                 log_search_fold_progress(
                     fold_results=fold_results,
@@ -132,7 +180,7 @@ def _process_combination_results(idx, params, fold_results, results, architectur
     print_fold_summary(aggregated, idx)
 
     checkpoint_key = f"{architecture_name}_{model_type}"
-    checkpoint_manager.save_combination(checkpoint_key, idx, params, aggregated)
+    checkpoint_manager.save_combination_final(checkpoint_key, idx, aggregated)
 
     score = calculate_combined_score(aggregated, is_multiclass=is_multiclass)
     if score > results['best_score']:
@@ -180,6 +228,9 @@ def evaluate_hyperparameters(param_grid, architecture_name, device, train_datase
     for idx in [i for i in range(total_combinations) if i not in executed_indices]:
         params = dict(zip(param_names, combinations[idx]))
         print(f"\n{'=' * 60}\nCOMBINAÇÃO [{idx + 1}/{total_combinations}] | Params: {params}\n{'=' * 60}")
+        
+        checkpoint_key = f"{architecture_name}_{model_type}"
+        checkpoint_manager.save_combination_init(checkpoint_key, idx + 1, params)
 
         try:
             if config['logging']['wandb']['enabled']:
@@ -190,10 +241,10 @@ def evaluate_hyperparameters(param_grid, architecture_name, device, train_datase
                     config={"architecture": architecture_name, "model_type": model_type, "index": idx, **params},
                     entity=wandb_cfg.get('entity'),
                     tags=["random_search", architecture_name, model_type],
-                    group=f"search/{model_type}"
+                    group=f"kfold_search/{model_type}"
                 )
 
-            fold_results = _run_combination_folds(idx, params, n_folds, all_splits, architecture_name, class_names, device, model_type)
+            fold_results = _run_combination_folds(idx, params, n_folds, all_splits, architecture_name, class_names, device, model_type, checkpoint_manager)
             if fold_results:
                 results = _process_combination_results(idx, params, fold_results, results, architecture_name, model_type, class_names, checkpoint_manager, executed_indices, total_combinations)
             else:

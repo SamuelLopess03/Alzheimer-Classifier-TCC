@@ -33,7 +33,9 @@ model_config:
     adaptation_layer: "conv1"
     classifier_layer: "fc"
     gradcam_target_layer: "layer4[-1]"
-    freeze_backbone: true
+    unfreeze_strategy: "partial" # none, partial, full
+    unfreeze_layers: ["layer4.2"]
+    freeze_backbone: false
 
   convnext_tiny:
     type: "cnn"
@@ -41,7 +43,9 @@ model_config:
     adaptation_layer: "features[0][0]"
     classifier_layer: "classifier"
     gradcam_target_layer: "stages[-1]"
-    freeze_backbone: true
+    unfreeze_strategy: "partial"
+    unfreeze_layers: ["features.7.2"] # Apenas o ÚLTIMO bloco do estágio final
+    freeze_backbone: false
 
   efficientnetv2_s:
     type: "cnn"
@@ -49,7 +53,9 @@ model_config:
     adaptation_layer: "features[0][0]"
     classifier_layer: "classifier"
     gradcam_target_layer: "features[-1]"
-    freeze_backbone: true
+    unfreeze_strategy: "partial"
+    unfreeze_layers: ["features\\.6\\.1[2-4]", "features\\.[78]"] # Final do Stage 6 + Stages 7 e 8 (Ratio ~18-20%)
+    freeze_backbone: false
 
   densenet121:
     type: "cnn"
@@ -57,7 +63,12 @@ model_config:
     adaptation_layer: "features.conv0"
     classifier_layer: "classifier"
     gradcam_target_layer: "features.denseblock4"
-    freeze_backbone: true
+    unfreeze_strategy: "partial"
+    unfreeze_layers: [
+      "features.denseblock4.denselayer(9|1[0-6])", # Camadas 9 a 16
+      "features.norm5"
+    ]
+    freeze_backbone: false
 
   vit_b_16:
     type: "transformer"
@@ -66,8 +77,10 @@ model_config:
     adaptation_layer: "patch_embed.proj"
     classifier_layer: "head"
     gradcam_target_layer: "blocks[-1].norm1"
+    unfreeze_strategy: "partial"
+    unfreeze_layers: ["blocks\\.11"] # Apenas o ÚLTIMO bloco (Ratio ~8.5%)
     freeze_patch_embed: true
-    freeze_backbone: true 
+    freeze_backbone: false 
 
   swin_v2_tiny:
     type: "transformer"
@@ -76,41 +89,43 @@ model_config:
     adaptation_layer: "patch_embed.proj"
     classifier_layer: "head"
     gradcam_target_layer: "layers[-1].blocks[-1].norm1"
+    unfreeze_strategy: "partial"
+    unfreeze_layers: ["layers\\.3\\.blocks\\.1\\.mlp", "norm$"] # Apenas o MLP do último bloco (Ratio ~15-18%)
     freeze_patch_embed: true
-    freeze_backbone: true
+    freeze_backbone: false
 
 # ------------------------------------------------------------
 # 4. CONFIGURAÇÕES DE FINE-TUNING
 # ------------------------------------------------------------
 fine_tuning:
   backbone_lr_ratio:
-    cnn: 0.01
-    transformer: 0.001
+    cnn: 0.05     
+    transformer: 0.02
 
 # ------------------------------------------------------------
 # 5. GRID DE HIPERPARÂMETROS PARA BUSCA ALEATÓRIA
 # ------------------------------------------------------------
 hyperparameter_grids:
   cnn:
-    learning_rate: [1e-3, 5e-4, 1e-4, 5e-5]
-    dropout: [0.4, 0.5, 0.6, 0.7]
-    hidden_units: [128, 256, 512]
+    learning_rate: [1e-3, 5e-4, 2e-4, 1e-4, 5e-5]
+    dropout: [0.3, 0.4, 0.5, 0.6, 0.7]
+    hidden_units: [64, 128, 256, 512]
     optimizer: ["adamw"]
     batch_size: [16, 32]
     loss_function: ["crossentropy"]
 
   vit:
-    learning_rate: [5e-5, 2e-5, 1e-5, 5e-6]
-    dropout: [0.2, 0.3, 0.4, 0.5]
-    hidden_units: [128, 256, 512]
+    learning_rate: [5e-5, 2e-5, 1e-5, 5e-6, 2e-6]
+    dropout: [0.3, 0.4, 0.5, 0.6, 0.7]
+    hidden_units: [128, 256, 512, 1024]
     optimizer: ["adamw"]
     batch_size: [8, 16]
     loss_function: ["crossentropy"]
 
   swin:
-    learning_rate: [5e-5, 2e-5, 1e-5, 5e-6]
-    dropout: [0.2, 0.3, 0.4, 0.5]
-    hidden_units: [128, 256, 512]
+    learning_rate: [5e-5, 2e-5, 1e-5, 5e-6, 2e-6]
+    dropout: [0.3, 0.4, 0.5, 0.6, 0.7]
+    hidden_units: [128, 256, 512, 1024]
     optimizer: ["adamw"]
     batch_size: [8, 16]
     loss_function: ["crossentropy"]
@@ -126,15 +141,10 @@ loss_config:
       transformer: 0.15
 
 optimizer_config:
-  adam:
-    weight_decay: 1e-4
-  sgd:
-    momentum: 0.9
-    weight_decay: 1e-4
   adamw:
     weight_decay:
-      cnn: 5e-2
-      transformer: 0.05
+      cnn: 0.1
+      transformer: 0.1
 
 # ------------------------------------------------------------
 # 7. ESTRATÉGIA DE BUSCA (RANDOM SEARCH)

@@ -122,7 +122,7 @@ def run_final_training_flow(model_type: str, experiments_path: str, data_path: s
                 config={"architecture": architecture_name, "model_type": model_type, "fold": fold_idx, **hyperparams},
                 entity=wandb_cfg.get('entity'),
                 tags=["final_training", "ensemble", architecture_name, model_type],
-                group=f"final_training/{model_type}"
+                group=f"kfold_final_training/{model_type}"
             )
 
         result = run_training_process(

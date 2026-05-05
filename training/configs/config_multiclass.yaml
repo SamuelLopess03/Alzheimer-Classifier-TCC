@@ -29,16 +29,14 @@ data:
     test: 0.2
   stratify: true
   random_seed: 42
-  max_slices_per_subject: 45
+  max_slices_per_subject: 120
   minority_classes: [0]
   
   minority_augmentation:
     enabled: true
-    strategy: "ratio"
+    strategy: "ratio" 
     ratio: { default_ratio: 0.7 }
     proportional: { multiplier: 1.5 }
-    custom: { targets: {0: 8000} }
-    percentage: { targets: {0: 0.40} }
 
 # ------------------------------------------------------------
 # 3. PARÂMETROS DE TREINAMENTO

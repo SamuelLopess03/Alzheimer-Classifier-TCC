@@ -53,7 +53,7 @@ def _open_wandb_inference_run(config: Dict, architecture_name: str, model_type: 
         },
         entity=wandb_cfg.get('entity'),
         tags=["inference", architecture_name, model_type],
-        group=f"inference/{model_type}",    # Pasta dedicada no WandB
+        group=f"kfold_inference/{model_type}",    # Pasta dedicada no WandB
         directory=os.path.join(models_path, 'wandb_logs')
     )
     return True

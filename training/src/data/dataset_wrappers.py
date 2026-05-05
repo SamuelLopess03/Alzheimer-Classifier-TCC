@@ -167,8 +167,7 @@ def augment_minority_class(
     architecture_name: str,
     target_strategy: str = 'balance',
     minority_classes: List[int] = [],
-    target_ratio: float = 0.6,
-    target_percentage: Dict[int, float] = {}
+    target_ratio: float = 0.6
 ) -> Dataset:
     """Orquestra o balanceamento de classes minoritárias via aumentação sintética."""
     if not minority_classes:
@@ -273,13 +272,15 @@ def create_kfold_splits(
         )
         
         if minority_config and minority_config.get('enabled'):
+            ratio_val = minority_config.get('ratio', 0.6)
+            target_ratio = ratio_val if isinstance(ratio_val, (int, float)) else ratio_val.get('default_ratio', 0.6)
+
             train_dataset = augment_minority_class(
                 train_split=train_dataset,
                 architecture_name=architecture_name,
-                target_strategy=minority_config.get('strategy', 'balance'),
+                target_strategy=minority_config.get('strategy', 'ratio'),
                 minority_classes=minority_classes or [],
-                target_ratio=minority_config.get('ratio', {}).get('default_ratio', 0.6),
-                target_percentage=minority_config.get('percentage', {}).get('targets', {})
+                target_ratio=target_ratio
             )
             
         val_dataset = SubjectSamplingSubset(
