@@ -148,8 +148,6 @@ minority_augmentation:
       default_ratio: 0.6
     proportional:
       multiplier: 1.5
-    custom: {}
-    percentage: {}
   random_seed:
     base: 42
     per_class_offset: true

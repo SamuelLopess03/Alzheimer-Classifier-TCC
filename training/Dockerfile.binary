@@ -23,8 +23,5 @@ RUN sed -i '/torch/d' requirements.txt && \
 # Copiar apenas o código-fonte (filtrado pelo .dockerignore)
 COPY . .
 
-# Expor porta (caso tenha API)
-EXPOSE 8080
-
 # Comando padrão
 CMD ["python", "-m", "scripts.train_binary"]
