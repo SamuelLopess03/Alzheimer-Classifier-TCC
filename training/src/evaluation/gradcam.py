@@ -11,7 +11,7 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 from typing import Dict, List, Optional, Union
 
 from ..models import get_target_layer
-from ..data.preprocessing import denormalize_images
+from ..data.preprocessing import denormalize_images, MedicalImagePreprocessor
 from ..data.subject_manager import get_central_slices_per_class, resolve_dataset_chain
 from src.utils.config import load_hyperparameters_config
 
@@ -41,23 +41,50 @@ def _collect_class_samples(
     print("[AVISO] Dataset raiz incompatível (sem 'samples'). O Grad-CAM não gerará imagens, pois o limite por paciente não pode ser garantido.")
     return {i: [] for i in range(num_classes)}
 
-def run_single_gradcam(
-    model: nn.Module,
+def generate_ensemble_gradcam_image(
+    models: List[nn.Module],
     img_tensor: torch.Tensor,
     device: torch.device,
-    class_names: List[str],
-    save_path: str,
     target_layer_path: Optional[str] = None
-) -> str:
-    """Gera Grad-CAM para um único modelo."""
-    return run_ensemble_gradcam(
-        models=[model],
-        img_tensor=img_tensor,
-        device=device,
-        class_names=class_names,
-        save_path=save_path,
-        target_layer_path=target_layer_path
-    )
+) -> np.ndarray:
+    for m in models: m.eval()
+    
+    img_batch = img_tensor.unsqueeze(0).to(device)
+    all_grayscale_cams = []
+
+    if target_layer_path is None:
+        arch_name = getattr(models[0], 'architecture_name', 'resnet50').lower()
+        hyperparams_config = load_hyperparameters_config()
+        arch_cfg = hyperparams_config['model_config'].get(arch_name)
+        target_layer_path = arch_cfg.get('gradcam_target_layer') if arch_cfg else None
+
+    for model in models:
+        target_layer = get_target_layer(model, target_layer_path)
+        cam = GradCAM(model=model, target_layers=[target_layer])
+        
+        grayscale_cam = cam(input_tensor=img_batch, targets=None)[0, :]
+        all_grayscale_cams.append(grayscale_cam)
+
+    ensemble_grayscale_cam = np.mean(all_grayscale_cams, axis=0)
+
+    img_np = img_tensor.cpu().numpy()
+    if img_np.ndim == 3 and img_np.shape[0] in [1, 3]:
+        img_np = np.transpose(img_np, (1, 2, 0))
+    if img_np.ndim == 3 and img_np.shape[-1] == 1:
+        img_np = img_np.squeeze(-1)
+
+    preprocessor = MedicalImagePreprocessor(arch_name)
+    mean, std = preprocessor.get_normalization_params()
+    img_uint8 = denormalize_images(img_np, mean=mean, std=std)
+    
+    if img_uint8.ndim == 2:
+        img_rgb = cv2.cvtColor(img_uint8, cv2.COLOR_GRAY2RGB)
+    else:
+        img_rgb = img_uint8
+
+    img_rgb = img_rgb.astype(np.float32) / 255.0
+    
+    return show_cam_on_image(img_rgb, ensemble_grayscale_cam, use_rgb=True)
 
 def run_ensemble_gradcam(
     models: List[nn.Module],
@@ -67,50 +94,7 @@ def run_ensemble_gradcam(
     save_path: str,
     target_layer_path: Optional[str] = None
 ) -> str:
-    """Gera o mapa consensual do Ensemble (média dos mapas de calor)."""
-    for m in models: m.eval()
-    
-    img_batch = img_tensor.unsqueeze(0).to(device)
-    all_grayscale_cams = []
-
-    # Configuração da arquitetura baseada no primeiro modelo
-    if target_layer_path is None:
-        arch_name = getattr(models[0], 'architecture_name', 'resnet50').lower()
-        hyperparams_config = load_hyperparameters_config()
-        arch_cfg = hyperparams_config['model_config'].get(arch_name)
-        target_layer_path = arch_cfg.get('gradcam_target_layer') if arch_cfg else None
-
-    # Acumula os mapas de calor de todos os modelos
-    for model in models:
-        target_layer = get_target_layer(model, target_layer_path)
-        cam = GradCAM(model=model, target_layers=[target_layer])
-        
-        # O Grad-CAM gera um mapa de 0 a 1 para a entrada
-        grayscale_cam = cam(input_tensor=img_batch, targets=None)[0, :]
-        all_grayscale_cams.append(grayscale_cam)
-
-    # Média dos mapas de calor (Consenso do Ensemble)
-    ensemble_grayscale_cam = np.mean(all_grayscale_cams, axis=0)
-
-    # Preparação da imagem original para overlay
-    img_np = img_tensor.cpu().numpy()
-    if img_np.ndim == 3 and img_np.shape[0] in [1, 3]:
-        img_np = np.transpose(img_np, (1, 2, 0))
-    if img_np.ndim == 3 and img_np.shape[-1] == 1:
-        img_np = img_np.squeeze(-1)
-
-    img_uint8 = denormalize_images(img_np, mean=[0.449], std=[0.226])
-    
-    if img_uint8.ndim == 2:
-        img_rgb = cv2.cvtColor(img_uint8, cv2.COLOR_GRAY2RGB)
-    else:
-        img_rgb = img_uint8
-
-    img_rgb = img_rgb.astype(np.float32) / 255.0
-    
-    # Renderiza o mapa consensual sobre a imagem
-    visualization = show_cam_on_image(img_rgb, ensemble_grayscale_cam, use_rgb=True)
-    
+    visualization = generate_ensemble_gradcam_image(models, img_tensor, device, target_layer_path)
     cv2.imwrite(save_path, cv2.cvtColor(visualization, cv2.COLOR_RGB2BGR))
     return save_path
 

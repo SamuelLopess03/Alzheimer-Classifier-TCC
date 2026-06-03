@@ -2,10 +2,13 @@ import torch
 import torch.nn as nn
 import os
 import glob
-from typing import Tuple, Optional, Dict, List, Any
+import io
+from typing import Tuple, Optional, Dict, List, Any, Union
 from pathlib import Path
 from PIL import Image
 from torchvision import transforms
+import base64
+import cv2
 
 from src.utils.config import (
     load_binary_config, 
@@ -14,8 +17,8 @@ from src.utils.config import (
 )
 from src.utils.hardware import get_pytorch_device
 from .architectures import create_model
-from ..data.preprocessing import denormalize_images
-from ..evaluation.gradcam import run_single_gradcam
+from src.data.preprocessing import MedicalImagePreprocessor
+from src.evaluation.gradcam import generate_ensemble_gradcam_image, run_ensemble_gradcam
 
 class InferenceWrapper(nn.Module):
     def __init__(self, device: torch.device = None):
@@ -34,32 +37,42 @@ class InferenceWrapper(nn.Module):
             device = get_pytorch_device()
         self.device = device
         
-        # Agora são listas de modelos (Ensemble)
         self.binary_models = []
         self.multiclass_models = []
         
-        self.transform = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.449], std=[0.226])
-        ])
+        self.binary_transform = None
+        self.multiclass_transform = None
 
     def load_models(self):
         print(f"\n{'=' * 60}\nINICIALIZANDO SISTEMA DE INFERÊNCIA EM CASCATA (ENSEMBLE)\n{'=' * 60}")
 
-        # Resolve diretórios de checkpoints
         binary_dir = self._resolve_checkpoint_dir(self.binary_config)
         multiclass_dir = self._resolve_checkpoint_dir(self.multiclass_config)
 
-        # Carrega Ensembles
         self.binary_models = self._load_ensemble(binary_dir, 'binary')
         self.multiclass_models = self._load_ensemble(multiclass_dir, 'multiclass')
+
+        if self.binary_models:
+            bin_arch = self.binary_models[0].architecture_name
+            bin_preprocessor = MedicalImagePreprocessor(bin_arch)
+            self.binary_transform = transforms.Compose([
+                transforms.Resize((bin_preprocessor.get_image_size(), bin_preprocessor.get_image_size())),
+                transforms.Normalize(mean=bin_preprocessor.config["mean"], std=bin_preprocessor.config["std"])
+            ])
+            
+        if self.multiclass_models:
+            multi_arch = self.multiclass_models[0].architecture_name
+            multi_preprocessor = MedicalImagePreprocessor(multi_arch)
+            self.multiclass_transform = transforms.Compose([
+                transforms.Resize((multi_preprocessor.get_image_size(), multi_preprocessor.get_image_size())),
+                transforms.Normalize(mean=multi_preprocessor.config["mean"], std=multi_preprocessor.config["std"])
+            ])
 
         print(f"\n{'=' * 60}\nSISTEMA ENSEMBLE PRONTO PARA PREDIÇÃO\n{'=' * 60}")
 
     def predict_image(self, image_path: str) -> Dict:
-        img_tensor = self._load_and_preprocess_image(image_path)
-        return self._predict(img_tensor)
+        img_tensor = self.load_image(image_path)
+        return self.predict_tensor(img_tensor)
 
     def predict_subject_folder(self, folder_path: str) -> Dict:
         if not os.path.isdir(folder_path):
@@ -73,30 +86,19 @@ class InferenceWrapper(nn.Module):
         if not file_list:
             raise ValueError(f"Nenhuma imagem encontrada na pasta: {folder_path}")
             
-        tensors = [self._load_and_preprocess_image(p) for p in file_list]
+        tensors = [self.load_image(p) for p in file_list]
         subject_tensor = torch.cat(tensors, dim=0)
         
-        return self._predict_subject(subject_tensor)
+        return self.predict_tensor(subject_tensor)
 
-    def _load_and_preprocess_image(self, path: str) -> torch.Tensor:
-        img = Image.open(path).convert('L')
-        return self.transform(img).unsqueeze(0)
+    def load_image(self, path_or_stream: Union[str, io.BytesIO]) -> torch.Tensor:
+        img = Image.open(path_or_stream).convert('L')
+        return transforms.ToTensor()(img).unsqueeze(0)
 
-    def _predict(self, x: torch.Tensor) -> Dict:
+    def predict_tensor(self, x: torch.Tensor) -> Dict:
         x = x.to(self.device)
         binary_probs, multiclass_probs = self._forward_ensemble(x)
 
-        # Pegamos a média se houver múltiplas fatias (aqui é só 1)
-        return self._format_prediction_result(
-            binary_probs=binary_probs[0],
-            multiclass_probs=multiclass_probs[0] if multiclass_probs is not None else None
-        )
-
-    def _predict_subject(self, x: torch.Tensor) -> Dict:
-        x = x.to(self.device)
-        binary_probs, multiclass_probs = self._forward_ensemble(x)
-
-        # Média das probabilidades de todas as fatias do sujeito
         binary_probs_avg = binary_probs.mean(dim=0)
         multiclass_probs_avg = None
         if multiclass_probs is not None:
@@ -108,25 +110,26 @@ class InferenceWrapper(nn.Module):
         )
 
     def _forward_ensemble(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        if not self.binary_models or not self.multiclass_models:
-            raise RuntimeError("Modelos não carregados. Chame load_models() primeiro.")
+        self._ensure_models_loaded()
 
         with torch.no_grad():
-            # 1. Predição Binária Ensemble (Soft Voting)
+            x_bin = self.binary_transform(x)
+            
             all_bin_probs = []
             for model in self.binary_models:
-                output = model(x)
+                output = model(x_bin)
                 all_bin_probs.append(torch.softmax(output, dim=1))
             
             avg_binary_probs = torch.stack(all_bin_probs).mean(dim=0)
             binary_pred = torch.argmax(avg_binary_probs, dim=1)
 
-            # 2. Predição Multiclasse Ensemble (se necessário)
             avg_multiclass_probs = None
-            if torch.any(binary_pred == 0): # Se algum foi predito como demente
+            if torch.any(binary_pred == 0):
+                x_multi = self.multiclass_transform(x)
+                
                 all_multi_probs = []
                 for model in self.multiclass_models:
-                    output = model(x)
+                    output = model(x_multi)
                     all_multi_probs.append(torch.softmax(output, dim=1))
                 avg_multiclass_probs = torch.stack(all_multi_probs).mean(dim=0)
 
@@ -182,6 +185,7 @@ class InferenceWrapper(nn.Module):
                 verbose=False
             )
             model.load_state_dict(checkpoint['model_state_dict'])
+            model.architecture_name = arch_name # Importante para o Grad-CAM encontrar a camada certa
             model.eval()
             models.append(model)
         return models
@@ -189,39 +193,53 @@ class InferenceWrapper(nn.Module):
     def _resolve_checkpoint_dir(self, config: Dict) -> str:
         return os.path.normpath(os.path.join(os.path.dirname(__file__), str(config['checkpoint']['save_path'])))
 
-    def generate_gradcam(self, image_path: str, save_dir: str, subject_name: str, slice_index: int, requires_multiclass: bool):
-        if not self.binary_models: raise RuntimeError("Modelos não carregados.")
-        os.makedirs(save_dir, exist_ok=True)
-        
-        img_tensor = self._load_and_preprocess_image(image_path).to(self.device).squeeze(0)
-        file_name = f"{subject_name}_slice_{slice_index:02d}.png"
-        
-        # No ensemble, o Grad-CAM é gerado usando todos os modelos para criar o mapa consensual
-        target_models = self.multiclass_models if (requires_multiclass and self.multiclass_models) else self.binary_models
-        class_names = self.multiclass_class_names if (requires_multiclass and self.multiclass_models) else self.binary_class_names
+    def _ensure_models_loaded(self):
+        if not self.binary_models or not self.multiclass_models:
+            raise RuntimeError("Modelos não carregados. Chame load_models() primeiro.")
 
-        from ..evaluation.gradcam import run_ensemble_gradcam
+    def _get_target_models_and_classes(self, requires_multiclass: bool):
+        if requires_multiclass and self.multiclass_models:
+            return self.multiclass_models, self.multiclass_class_names
+        return self.binary_models, self.binary_class_names
+
+    def _prepare_gradcam_input(self, image_path: Optional[str], img_tensor: Optional[torch.Tensor], requires_multiclass: bool) -> Tuple[List[nn.Module], List[str], torch.Tensor]:
+        self._ensure_models_loaded()
+        
+        if img_tensor is None:
+            img_tensor = self.load_image(image_path).squeeze(0)
+            
+        if img_tensor.ndim == 4:
+            img_tensor = img_tensor.squeeze(0)
+        
+        target_models, class_names = self._get_target_models_and_classes(requires_multiclass)
+        transform = self.multiclass_transform if requires_multiclass else self.binary_transform
+        
+        img_tensor_transformed = transform(img_tensor).to(self.device)
+        return target_models, class_names, img_tensor_transformed
+
+    def generate_gradcam(self, image_path: Optional[str], save_dir: str, subject_name: str, slice_index: int, requires_multiclass: bool, img_tensor: torch.Tensor = None):
+        target_models, class_names, img_tensor_transformed = self._prepare_gradcam_input(image_path, img_tensor, requires_multiclass)
+        os.makedirs(save_dir, exist_ok=True)
+        file_name = f"{subject_name}_slice_{slice_index:02d}.png"
+
         run_ensemble_gradcam(
-            models=target_models, img_tensor=img_tensor, device=self.device,
+            models=target_models, img_tensor=img_tensor_transformed, device=self.device,
             class_names=class_names, save_path=os.path.join(save_dir, file_name)
         )
 
-    def print_prediction(self, result: Dict):
-        print(f"\n[{'=' * 60}]")
-        print("RESULTADO DO DIAGNÓSTICO CLÍNICO (ENSEMBLE)")
-        print(f"[{'=' * 60}]\n")
-        
-        print("1. Avaliação Primária (Binária Ensemble):")
-        bin_pred = result['binary_prediction']
-        print(f"   => Classe: {bin_pred['class_name']}")
-        print(f"   => Confiança: {bin_pred['confidence'] * 100:.2f}%")
-        
-        if result['requires_multiclass']:
-            print("\n2. Avaliação Secundária (Multiclasse Ensemble - Estagiamento):")
-            multi_pred = result['multiclass_prediction']
-            print(f"   => Estágio: {multi_pred['class_name']}")
-            print(f"   => Confiança: {multi_pred['confidence'] * 100:.2f}%")
-        
-        print(f"\n{'-' * 60}")
-        print(f"DIAGNÓSTICO FINAL: >> {result['final_prediction'].upper()} <<")
-        print(f"{'-' * 60}\n")
+    def get_gradcam_base64(self, image_path: Optional[str], requires_multiclass: bool, img_tensor: torch.Tensor = None) -> Optional[str]: 
+        try:
+            target_models, _, img_tensor_transformed = self._prepare_gradcam_input(image_path, img_tensor, requires_multiclass)
+            
+            visualization = generate_ensemble_gradcam_image(
+                models=target_models, 
+                img_tensor=img_tensor_transformed, 
+                device=self.device
+            )
+            
+            vis_bgr = cv2.cvtColor(visualization, cv2.COLOR_RGB2BGR)
+            _, buffer = cv2.imencode('.png', vis_bgr)
+            return base64.b64encode(buffer).decode('utf-8')
+        except Exception as e:
+            print(f"Erro ao gerar Grad-CAM em base64: {e}")
+            return None
