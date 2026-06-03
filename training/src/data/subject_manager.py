@@ -7,23 +7,20 @@ from typing import Tuple, List, Dict, Optional, Any
 from collections import defaultdict
 
 def extract_subject_id(filename: str) -> str:
-    # 1. Tenta o padrão OASIS-1/2: OAS1_0001
-    match_oas12 = re.search(r'(OAS[12]_\d{4})', filename, re.IGNORECASE)
-    if match_oas12:
-        return match_oas12.group(1).upper()
-        
-    # 2. Tenta o padrão OASIS-3: OAS30001
-    match_oas3 = re.search(r'(OAS3\d{4,5})', filename, re.IGNORECASE)
-    if match_oas3:
-        return match_oas3.group(1).upper()
-    
-    # 3. Fallback genérico para qualquer padrão OAS
-    match_generic = re.search(r'(OAS\d+(?:_\d+)?)', filename, re.IGNORECASE)
-    return match_generic.group(1).upper() if match_generic else "unknown"
+    match = re.search(r'(OAS\d+(?:_\d+)?)', filename, re.IGNORECASE)
+    return match.group(1).upper() if match else "unknown"
     
 def extract_slice_index(filename: str) -> int:
     match = re.search(r'_(\d+)\.(?:jpg|jpeg|png)$', filename, re.IGNORECASE)
     return int(match.group(1)) if match else 0
+
+def get_central_elements(items: List[Any], num_samples: int) -> List[Any]:
+    if not items: return []
+    center_idx = len(items) // 2
+    num_samples = min(num_samples, len(items))
+    start_idx = max(0, center_idx - (num_samples // 2))
+    end_idx = min(len(items), start_idx + num_samples)
+    return items[start_idx:end_idx]
 
 def resolve_dataset_chain(ds: Any, indices: Optional[np.ndarray] = None) -> Tuple[Any, Optional[np.ndarray]]:
     from torch.utils.data import Subset
@@ -194,12 +191,7 @@ def get_central_slices_per_class(
         
         paciente_indices_lista.sort(key=lambda idx: extract_slice_index(os.path.basename(dataset.samples[idx][0])))
         
-        center_idx = len(paciente_indices_lista) // 2
-        start_idx = max(0, center_idx - (samples_per_class // 2))
-        end_idx = min(len(paciente_indices_lista), start_idx + samples_per_class)
-        
-        selected = paciente_indices_lista[start_idx:end_idx]
-        
+        selected = get_central_elements(paciente_indices_lista, samples_per_class)
         class_indices[class_idx] = selected
         
     return class_indices

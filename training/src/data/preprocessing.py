@@ -74,7 +74,6 @@ def convert_pil_to_numpy(image: Image.Image) -> np.ndarray:
 def convert_tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:
     array = tensor.numpy()
 
-    # Se for channels-first, converter para channels-last
     if array.ndim == 3 and array.shape[0] in [1, 3]:
         array = np.transpose(array, (1, 2, 0))
 

@@ -15,8 +15,7 @@ def _handle_freezing(model: nn.Module, architecture_name: str, arch_cfg: Dict, v
     strategy = arch_cfg.get('unfreeze_strategy', 'none').lower()
     unfreeze_layers = arch_cfg.get('unfreeze_layers', [])
     classifier_layer = arch_cfg.get('classifier_layer', 'fc')
-    
-    # Prioridade para o freeze_backbone antigo se for True
+
     if freeze_backbone:
         strategy = 'none'
 
@@ -26,13 +25,10 @@ def _handle_freezing(model: nn.Module, architecture_name: str, arch_cfg: Dict, v
         if verbose: print(f"Treinamento TOTAL habilitado para {architecture_name}")
         
     elif strategy == 'partial':
-        # Congela tudo primeiro
         for param in model.parameters():
             param.requires_grad = False
-            
-        # Descongela as camadas especificadas (suporta Regex) e o head
+
         for name, param in model.named_parameters():
-            # Match rigoroso para o head: deve ser o nome exato ou estar no final/início do nome
             is_head = any(re.search(rf"(^|\.){k}(\.|$)", name) for k in [classifier_layer, 'classifier', 'fc', 'head'])
             is_target = any(re.search(layer, name) for layer in unfreeze_layers)
             
@@ -46,7 +42,7 @@ def _handle_freezing(model: nn.Module, architecture_name: str, arch_cfg: Dict, v
             print(f"   Camadas desbloqueadas: {unfreeze_layers} + Head")
             print(f"   Ratio de Parâmetros Treináveis: {trainable/total*100:.1f}%")
             
-    else: # strategy == 'none'
+    else:
         for param in model.parameters():
             param.requires_grad = False
         for name, param in model.named_parameters():

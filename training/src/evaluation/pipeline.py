@@ -1,12 +1,13 @@
 import os
 import json
 import torch
+import glob
 from pathlib import Path
 from typing import Dict
 from torchvision import datasets as tv_datasets
 
 from ..models.architectures import create_model_with_architecture
-from .evaluator import evaluate_model
+from .evaluator import evaluate_model, evaluate_ensemble
 from src.utils.hardware import get_pytorch_device
 from src.visualization.terminal import print_banner, print_section, print_detailed_metrics
 from src.utils.config import (
@@ -90,8 +91,6 @@ def run_inference_pipeline(
         os.path.join(os.path.dirname(__file__), str(config['checkpoint']['save_path']))
     )
     
-    # Busca todos os pesos dos folds (Ensemble)
-    import glob
     checkpoint_files = sorted(glob.glob(os.path.join(checkpoint_dir, "best_model_fold_*.pth")))
     
     if not checkpoint_files:
@@ -113,8 +112,7 @@ def run_inference_pipeline(
         checkpoint = torch.load(ckpt_file, map_location=device, weights_only=True)
         model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)
         model.eval()
-        
-        # Injetar metadados necessários para o evaluator
+
         model.architecture_name = architecture_name
         model.hyperparameters = hyperparams
         model.class_names = class_names
@@ -125,7 +123,6 @@ def run_inference_pipeline(
     )
 
     print_section("EXECUTANDO AVALIAÇÃO ENSEMBLE NO TEST SET")
-    from .evaluator import evaluate_ensemble
     
     evaluation_results = evaluate_ensemble(
         models=ensemble_models,

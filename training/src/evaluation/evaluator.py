@@ -15,8 +15,6 @@ from .metrics import evaluate_performance
 from .reporter import print_test_metrics_summary, generate_visual_reports, close_visual_reports
 from .gradcam import generate_gradcam_visualizations
 
-# --- FUNÇÕES AUXILIARES INTERNAS ---
-
 def _print_evaluation_header(is_ensemble, model_type_str, arch_name, n_classes, gradcam):
     title = "AVALIAÇÃO ENSEMBLE" if is_ensemble else "AVALIAÇÃO DE MODELO"
     print(f"\n{'=' * 60}")
@@ -46,7 +44,6 @@ def _get_predictions(
     test_loader: DataLoader, 
     device: torch.device
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Obtém predições de um ou mais modelos (Ensemble via Soft Voting)."""
     all_probas = []
     y_true = None
     
@@ -64,13 +61,10 @@ def _get_predictions(
         all_probas.append(y_prob_fold)
         y_true = y_true_fold
         
-    # Média das probabilidades (Soft Voting)
     ensemble_proba = np.mean(all_probas, axis=0)
     ensemble_pred = np.argmax(ensemble_proba, axis=1)
     
     return y_true, ensemble_pred, ensemble_proba
-
-# --- FLUXO PRINCIPAL UNIFICADO ---
 
 def _run_shared_evaluation_flow(
     models: List[nn.Module],
@@ -81,7 +75,6 @@ def _run_shared_evaluation_flow(
     gradcam_samples: int,
     save_path: str
 ) -> Dict:
-    # 1. Configurações Iniciais
     main_model = models[0]
     arch_name = getattr(main_model, 'architecture_name', 'desconhecida')
     class_names = getattr(main_model, 'class_names', [])
@@ -91,11 +84,9 @@ def _run_shared_evaluation_flow(
 
     _print_evaluation_header(is_ensemble, model_type_str, arch_name, len(class_names), generate_gradcam)
 
-    # 2. Preparação
     test_loader = _prepare_test_dataloader(test_dataset, arch_name, hyperparams.get('batch_size', 32))
     test_subject_ids = get_subject_ids_from_dataset(test_dataset)
 
-    # 3. Predição e Métricas
     y_true, y_pred, y_proba = _get_predictions(models, test_loader, device)
     
     test_metrics = evaluate_performance(
@@ -108,7 +99,6 @@ def _run_shared_evaluation_flow(
         is_multiclass=is_multiclass
     )
 
-    # 4. Relatórios e Logs
     print_test_metrics_summary(test_metrics, model_type_str, is_multiclass)
     
     fig_cm, fig_roc = generate_visual_reports(
@@ -120,7 +110,6 @@ def _run_shared_evaluation_flow(
     log_inference_results(test_metrics, class_names or [], is_multiclass, fig_cm, fig_roc)
     close_visual_reports(fig_cm, fig_roc)
 
-    # 5. Grad-CAM (sempre baseado no primeiro modelo/modelo principal)
     gradcam_path = None
     if generate_gradcam:
         gradcam_path = os.path.join(save_path, "gradcam")
@@ -140,12 +129,8 @@ def _run_shared_evaluation_flow(
 
     return {'test_metrics': test_metrics, 'gradcam_path': gradcam_path}
 
-# --- FUNÇÕES PÚBLICAS (API) ---
-
 def evaluate_model(model: nn.Module, **kwargs) -> Dict:
-    """Avalia um único modelo."""
     return _run_shared_evaluation_flow(models=[model], **kwargs)
 
 def evaluate_ensemble(models: List[nn.Module], **kwargs) -> Dict:
-    """Avalia um conjunto de modelos (Ensemble)."""
     return _run_shared_evaluation_flow(models=models, **kwargs)

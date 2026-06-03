@@ -63,7 +63,6 @@ class SearchCheckpointManager:
             return set(), default_results
 
     def save_combination_init(self, key: str, idx: int, params: Dict):
-        """Inicializa o arquivo da combinação com os parâmetros."""
         result_file = self.get_search_directory(key) / f'combination_{idx}.json'
         result = {
             'combination_index': idx,
@@ -75,13 +74,11 @@ class SearchCheckpointManager:
             json.dump(result, f, indent=2)
 
     def save_fold_result(self, key: str, combo_idx: int, fold_idx: int, result: Dict):
-        """Injeta o resultado de um fold específico dentro do arquivo da combinação."""
         result_file = self.get_search_directory(key) / f'combination_{combo_idx}.json'
         
         if not result_file.exists():
             return
 
-        # Limpa o histórico para não poluir o JSON
         clean_result = {k: v for k, v in result.items() if k != 'history'}
 
         with open(result_file, 'r') as f:
@@ -93,7 +90,6 @@ class SearchCheckpointManager:
             json.dump(data, f, indent=2, default=str)
 
     def save_combination_final(self, key: str, idx: int, metrics: Dict):
-        """Finaliza o arquivo da combinação adicionando as métricas agregadas."""
         result_file = self.get_search_directory(key) / f'combination_{idx}.json'
         
         if not result_file.exists():
@@ -155,10 +151,8 @@ def _run_combination_folds(idx, params, n_folds, all_splits, architecture_name, 
             result.update({'fold': fold_idx + 1, 'model_type': model_type})
             fold_results.append(result)
 
-            # SALVAMENTO PARCIAL: Salva o resultado deste fold imediatamente
             checkpoint_manager.save_fold_result(checkpoint_key, idx + 1, fold_idx + 1, result)
-            
-            # Print rápido do desempenho do fold
+
             f1_key = 'macro_f1' if is_multiclass else 'f1_score'
             print(f"  > [OK] Fold {fold_idx + 1} concluído. {f1_key.replace('_', ' ').upper()}: {result.get(f1_key, 0):.4f}")
 

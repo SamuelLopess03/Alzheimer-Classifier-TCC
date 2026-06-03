@@ -10,15 +10,11 @@ from .augmentation import get_alzheimer_grayscale_augmentation, create_synthetic
 from .subject_manager import extract_subject_id, extract_slice_index, resolve_subset_labels
 from src.utils.config import load_augmentation_config
 
-# --- WRAPPERS DE DATASET ---
-
 class DynamicAugmentationDataset(Dataset):
-    """Aplica aumentação dinâmica durante o treino."""
     def __init__(self, subset_dataset: Subset, architecture_name: str):
         self.subset_dataset = subset_dataset
         self.architecture_name = architecture_name
 
-        # Determina o nível de aumentação baseado no número de SUJEITOS únicos (mais robusto)
         from .subject_manager import count_unique_subjects
         try:
             n_subjects = count_unique_subjects(subset_dataset)
@@ -48,7 +44,6 @@ class DynamicAugmentationDataset(Dataset):
         return img_tensor, torch.tensor(label, dtype=torch.long)
 
 class StaticPreprocessedDataset(Dataset):
-    """Pré-processamento estático (usado no teste para velocidade)."""
     def __init__(self, subset_dataset: Subset, architecture_name: str):
         self.subset_dataset = subset_dataset
         
@@ -76,13 +71,11 @@ class StaticPreprocessedDataset(Dataset):
         return self.preprocessed_data[idx], self.labels[idx]
 
 class SyntheticAugmentedDataset(Dataset):
-    """Aplica aumentação sintética especificamente para balanceamento."""
     def __init__(self, sampling_subset: 'SubjectSamplingSubset', augmentation_transform):
         self.sampling_subset = sampling_subset
         self.augmentation_transform = augmentation_transform
         self.dataset = sampling_subset.dataset
-        
-        # Calcula o tamanho total (Real + Sintético)
+
         self.total_len = len(self.sampling_subset.indices) + len(self.sampling_subset.synthetic_indices)
         self.indices = list(range(self.total_len))
 
@@ -93,7 +86,6 @@ class SyntheticAugmentedDataset(Dataset):
         if idx < len(self.sampling_subset.indices):
             return self.sampling_subset[idx]
 
-        # Lógica para amostra sintética
         synthetic_idx = idx - len(self.sampling_subset.indices)
         original_img_idx = self.sampling_subset.synthetic_indices[synthetic_idx]
         
@@ -104,13 +96,11 @@ class SyntheticAugmentedDataset(Dataset):
         return augmented['image'], label
 
 class SubjectSamplingSubset(Subset):
-    """Subconjunto que garante amostragem por sujeito e limite de fatias."""
-    def __init__(self, dataset, subject_indices, max_slices, random_state=42, strategy='random'):
+    def __init__(self, dataset, subject_indices, max_slices, strategy='random'):
         self.subject_indices = subject_indices
         self.max_slices = max_slices
         self.strategy = strategy
-        # Não usamos o random_state para o gerador interno se quisermos que mude a cada epoch
-        self.rng = np.random.default_rng() 
+        self.rng = np.random.default_rng()
         
         self.subject_labels = {sid: dataset.samples[indices[0]][1] for sid, indices in subject_indices.items()}
         self.synthetic_quotas = {}
@@ -160,8 +150,6 @@ class SubjectSamplingSubset(Subset):
         end = min(len(indexed), start + max_n)
         return [item[1] for item in indexed[start:end]]
 
-# --- FUNÇÕES DE ORQUESTRAÇÃO ---
-
 def augment_minority_class(
     train_split: SubjectSamplingSubset,
     architecture_name: str,
@@ -169,17 +157,14 @@ def augment_minority_class(
     minority_classes: List[int] = [],
     target_ratio: float = 0.6
 ) -> Dataset:
-    """Orquestra o balanceamento de classes minoritárias via aumentação sintética."""
     if not minority_classes:
         return train_split
 
-    print(f"  [AUGMENT] Balanceando classes {minority_classes} via estratégia '{target_strategy}'")
+    print(f"[AUGMENT] Balanceando classes {minority_classes} via estratégia '{target_strategy}'")
     
-    # 1. Resolve rótulos e conta classes
     train_labels = resolve_subset_labels(train_split)
     class_counts = Counter(train_labels)
     
-    # 2. Calcula quantos novos exemplos sintéticos precisamos
     majority_count = max(class_counts.values())
     targets = {}
     for cl in minority_classes:
@@ -188,9 +173,8 @@ def augment_minority_class(
         elif target_strategy == 'ratio':
             targets[cl] = int(majority_count * target_ratio)
         else:
-            targets[cl] = class_counts[cl] # Sem mudança
+            targets[cl] = class_counts[cl]
 
-    # 3. Distribui as cotas sintéticas entre os sujeitos da classe
     quotas = {}
     subjects_in_split = list(train_split.subject_indices.keys())
     
@@ -206,10 +190,8 @@ def augment_minority_class(
         for i, s in enumerate(minority_subjects):
             quotas[s] = quota_per_subject + (1 if i < remainder else 0)
 
-    # 4. Aplica as cotas no subset de amostragem
     train_split.set_synthetic_quotas(quotas)
     
-    # 5. Cria o pipeline de aumentação e o dataset final
     synthetic_transform = create_synthetic_augmentation_for_minority(architecture_name)
     return SyntheticAugmentedDataset(
         sampling_subset=train_split,
