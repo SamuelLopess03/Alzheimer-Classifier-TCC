@@ -1,6 +1,10 @@
 services:
+  # ==========================================
+  # MODO TREINAMENTO (--profile training)
+  # ==========================================
   data-setup:
     container_name: ia-alzheimer-setup
+    profiles: ["training"]
     build:
       context: ./training
       dockerfile: Dockerfile.setup
@@ -14,6 +18,7 @@ services:
 
   alzheimer-binary:
     container_name: ia-alzheimer-binary
+    profiles: ["training"]
     build:
       context: ./training
       dockerfile: Dockerfile.binary
@@ -29,8 +34,6 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - WANDB_SILENT=true
-    ports:
-      - "8080:8080"
     volumes:
       - ./shared:/app/shared
       - ./training/configs:/app/configs:ro
@@ -43,12 +46,13 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    restart: unless-stopped
+    restart: "on-failure:3"
     networks:
       - alzheimer-network
 
   alzheimer-multiclass:
     container_name: ia-alzheimer-multiclass
+    profiles: ["training"]
     build:
       context: ./training
       dockerfile: Dockerfile.multiclass
@@ -64,8 +68,6 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - WANDB_SILENT=true
-    ports:
-      - "8081:8080"
     volumes:
       - ./shared:/app/shared
       - ./training/configs:/app/configs:ro
@@ -78,6 +80,63 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    restart: "on-failure:3"
+    networks:
+      - alzheimer-network
+
+  # ==========================================
+  # MODO PRODUÇÃO / INFERÊNCIA (--profile api)
+  # ==========================================
+  ia-alzheimer-inference:
+    container_name: ia-alzheimer-inference
+    profiles: ["api"]
+    build:
+      context: ./training
+      dockerfile: Dockerfile.binary
+    image: model-alzheimer-binary:latest
+    runtime: nvidia
+    env_file:
+      - ./training/.env
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    command: ["uvicorn", "scripts.inference_server:app", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./shared:/app/shared
+      - ./training/configs:/app/configs:ro
+      - ./training/src:/app/src:ro
+      - ./training/scripts:/app/scripts:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - alzheimer-network
+
+  api:
+    container_name: ia-alzheimer-api
+    profiles: ["api"]
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: model-alzheimer-api:latest
+    depends_on:
+      ia-alzheimer-inference:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app/api
+      - ./shared:/app/shared:ro
+      - ./training/src:/app/training/src:ro
+      - ./training/configs:/app/training/configs:ro
     restart: unless-stopped
     networks:
       - alzheimer-network
