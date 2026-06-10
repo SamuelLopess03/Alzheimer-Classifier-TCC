@@ -1,8 +1,8 @@
 {
-  "best_score": 0.855995907170647,
+  "best_score": 0.8361174974551175,
   "best_params": {
-    "learning_rate": "5e-5",
-    "dropout": 0.3,
+    "learning_rate": "2e-6",
+    "dropout": 0.4,
     "hidden_units": 512,
     "optimizer": "adamw",
     "batch_size": 16,

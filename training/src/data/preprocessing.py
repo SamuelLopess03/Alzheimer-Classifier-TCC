@@ -101,6 +101,18 @@ def normalize_image(image: np.ndarray) -> np.ndarray:
 
     return image
 
+def crop_mri_background(image: np.ndarray, threshold: int = 12) -> np.ndarray:
+    image_gray = convert_to_grayscale(image)
+    image_gray = normalize_image(image_gray)
+    
+    _, binary = cv2.threshold(image_gray, threshold, 255, cv2.THRESH_BINARY)
+    
+    coords = cv2.findNonZero(binary)
+    if coords is not None:
+        x, y, w, h = cv2.boundingRect(coords)
+        return image[y:y+h, x:x+w]
+    return image
+
 def prepare_image_for_augmentation(image) -> np.ndarray:
     if isinstance(image, Image.Image):
         image = convert_pil_to_numpy(image)
@@ -108,10 +120,11 @@ def prepare_image_for_augmentation(image) -> np.ndarray:
         image = convert_tensor_to_numpy(image)
 
     image = convert_to_grayscale(image)
-
     image = normalize_image(image)
+    image = crop_mri_background(image)
 
     return image
+
 
 def denormalize_images(
     img: np.ndarray,

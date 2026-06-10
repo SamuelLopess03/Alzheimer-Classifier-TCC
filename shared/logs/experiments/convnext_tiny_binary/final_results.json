@@ -1,9 +1,9 @@
 {
-  "best_score": 0.8474956889000033,
+  "best_score": 0.8265066195390763,
   "best_params": {
-    "learning_rate": "2e-4",
+    "learning_rate": "1e-4",
     "dropout": 0.6,
-    "hidden_units": 64,
+    "hidden_units": 512,
     "optimizer": "adamw",
     "batch_size": 16,
     "loss_function": "crossentropy"

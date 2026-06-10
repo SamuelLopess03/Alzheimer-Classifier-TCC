@@ -1,11 +1,11 @@
 {
   "executed_indices": [],
   "results": {
-    "best_score": 0.8846224337537935,
+    "best_score": 0.8650744881243113,
     "best_params": {
       "learning_rate": "1e-3",
-      "dropout": 0.6,
-      "hidden_units": 64,
+      "dropout": 0.7,
+      "hidden_units": 512,
       "optimizer": "adamw",
       "batch_size": 16,
       "loss_function": "crossentropy"

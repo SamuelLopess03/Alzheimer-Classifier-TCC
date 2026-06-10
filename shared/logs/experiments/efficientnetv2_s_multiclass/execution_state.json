@@ -1,7 +1,7 @@
 {
   "executed_indices": [],
   "results": {
-    "best_score": 0.78966875861349,
+    "best_score": 0.7308887961325171,
     "best_params": {
       "learning_rate": "1e-3",
       "dropout": 0.4,
@@ -11,31 +11,31 @@
       "loss_function": "crossentropy"
     },
     "best_metrics": {
-      "mean_f1": 0.8373942208462332,
-      "std_f1": 0.09142560794191926,
-      "mean_accuracy": 0.8423076923076923,
-      "std_accuracy": 0.0880424857096892,
-      "mean_balanced_accuracy": 0.8027777777777777,
-      "std_balanced_accuracy": 0.13217085837078135,
-      "mean_precision": 0.8573892773892773,
-      "std_precision": 0.09406190424294875,
-      "mean_recall": 0.8423076923076923,
-      "std_recall": 0.0880424857096892,
-      "mean_loss": 0.6748692919364592,
-      "std_loss": 0.08385941037608668,
-      "mean_mcc": 0.6237154602994163,
-      "std_mcc": 0.24489412473065786,
+      "mean_f1": 0.8221798840993888,
+      "std_f1": 0.059095327427953565,
+      "mean_accuracy": 0.826923076923077,
+      "std_accuracy": 0.062017367294604234,
+      "mean_balanced_accuracy": 0.763888888888889,
+      "std_balanced_accuracy": 0.0541488574711609,
+      "mean_precision": 0.8381148018648019,
+      "std_precision": 0.062151403127706686,
+      "mean_recall": 0.826923076923077,
+      "std_recall": 0.062017367294604234,
+      "mean_loss": 0.6934434991520819,
+      "std_loss": 0.13152737588118069,
+      "mean_mcc": 0.5782489412392471,
+      "std_mcc": 0.1411520353546425,
       "n_folds": 5,
-      "mean_specificity": 0.8027777777628812,
-      "std_specificity": 0.13217085836691572,
-      "mean_precision_macro": 0.8259848484848484,
-      "std_precision_macro": 0.12332244386443972,
-      "mean_recall_macro": 0.8027777777777777,
-      "std_recall_macro": 0.13217085837078135,
-      "mean_f1_macro": 0.7973968008255934,
-      "std_f1_macro": 0.12384387793577195
+      "mean_specificity": 0.7638888888751187,
+      "std_specificity": 0.05414885746994177,
+      "mean_precision_macro": 0.8207828282828284,
+      "std_precision_macro": 0.10109824437048553,
+      "mean_recall_macro": 0.763888888888889,
+      "std_recall_macro": 0.0541488574711609,
+      "mean_f1_macro": 0.7766428325716251,
+      "std_f1_macro": 0.06772891758078767
     },
-    "best_combination_index": 30,
+    "best_combination_index": 31,
     "model_type": "multiclass"
   }
 }

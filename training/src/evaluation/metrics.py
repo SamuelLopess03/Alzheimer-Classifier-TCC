@@ -9,7 +9,7 @@ from sklearn.metrics import (
 from sklearn.preprocessing import label_binarize
 
 DEFAULT_BINARY_CLASSES = ['Demented', 'Non Demented']
-DEFAULT_MULTICLASS_CLASSES = ['Mild+Moderate Dementia', 'Very mild Dementia', 'Non Demented']
+DEFAULT_MULTICLASS_CLASSES = ['Mild+Moderate Dementia', 'Very mild Dementia']
 
 BINARY_SCORE_WEIGHTS = {
     'f1': 0.35,
@@ -17,7 +17,7 @@ BINARY_SCORE_WEIGHTS = {
     'recall': 0.15,
     'specificity': 0.15,
     'mcc': 0.10,
-    'std_penalty': 0.15
+    'std_penalty': 0.50
 }
 
 MULTICLASS_SCORE_WEIGHTS = {
@@ -26,7 +26,7 @@ MULTICLASS_SCORE_WEIGHTS = {
     'balanced_acc': 0.25,
     'recall_macro': 0.15,
     'mcc': 0.10,
-    'std_penalty': 0.15
+    'std_penalty': 0.60
 }
 
 def _aggregate_predictions_by_subject(
@@ -222,11 +222,12 @@ def _calculate_combined_score_multiclass(metrics: Dict[str, float]) -> float:
         metrics.get('mean_recall_macro', 0.0) * w['recall_macro'] + 
         ((metrics.get('mean_mcc', 0.0) + 1) / 2) * w['mcc']
     )
-    
+
     penalty = (
-        metrics.get('std_f1_macro', 0.0) * 0.4 + 
+        metrics.get('std_f1_macro', 0.0) * 0.3 + 
         metrics.get('std_balanced_accuracy', 0.0) * 0.3 + 
-        metrics.get('std_recall_macro', 0.0) * 0.3
+        metrics.get('std_precision_macro', 0.0) * 0.2 + 
+        metrics.get('std_mcc', 0.0) * 0.2
     ) * w['std_penalty']
     
     return float(score - penalty)
