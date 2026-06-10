@@ -1,0 +1,41 @@
+{
+  "executed_indices": [],
+  "results": {
+    "best_score": 0.8168999365551495,
+    "best_params": {
+      "learning_rate": "1e-3",
+      "dropout": 0.6,
+      "hidden_units": 512,
+      "optimizer": "adamw",
+      "batch_size": 16,
+      "loss_function": "crossentropy"
+    },
+    "best_metrics": {
+      "mean_f1": 0.8554147812971342,
+      "std_f1": 0.07417371578673465,
+      "mean_accuracy": 0.8589743589743589,
+      "std_accuracy": 0.07606357422662217,
+      "mean_balanced_accuracy": 0.8255555555555556,
+      "std_balanced_accuracy": 0.09458159975569076,
+      "mean_precision": 0.8932400932400932,
+      "std_precision": 0.05619891443340173,
+      "mean_recall": 0.8589743589743589,
+      "std_recall": 0.07606357422662217,
+      "mean_loss": 0.6955244328416124,
+      "std_loss": 0.05738324392237821,
+      "mean_mcc": 0.6852735663998359,
+      "std_mcc": 0.1605144787604584,
+      "n_folds": 5,
+      "mean_specificity": 0.825555555539979,
+      "std_specificity": 0.09458159975338185,
+      "mean_precision_macro": 0.8691919191919192,
+      "std_precision_macro": 0.09258279715557363,
+      "mean_recall_macro": 0.8255555555555556,
+      "std_recall_macro": 0.09458159975569076,
+      "mean_f1_macro": 0.817908496732026,
+      "std_f1_macro": 0.09215208813478591
+    },
+    "best_combination_index": 2,
+    "model_type": "multiclass"
+  }
+}

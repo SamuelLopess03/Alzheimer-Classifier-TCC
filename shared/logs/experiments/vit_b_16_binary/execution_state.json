@@ -1,0 +1,35 @@
+{
+  "executed_indices": [],
+  "results": {
+    "best_score": 0.833629813271053,
+    "best_params": {
+      "learning_rate": "5e-5",
+      "dropout": 0.5,
+      "hidden_units": 256,
+      "optimizer": "adamw",
+      "batch_size": 16,
+      "loss_function": "crossentropy"
+    },
+    "best_metrics": {
+      "mean_f1": 0.8611805260056761,
+      "std_f1": 0.062027809174679545,
+      "mean_accuracy": 0.8553896103896104,
+      "std_accuracy": 0.06886166930210415,
+      "mean_balanced_accuracy": 0.8408510094556606,
+      "std_balanced_accuracy": 0.06714029558195572,
+      "mean_precision": 0.8800736914600551,
+      "std_precision": 0.04615589651920321,
+      "mean_recall": 0.8553896103896104,
+      "std_recall": 0.06886166930210415,
+      "mean_loss": 0.5790396354839012,
+      "std_loss": 0.08007023084655172,
+      "mean_mcc": 0.6479647433633562,
+      "std_mcc": 0.141870574932421,
+      "n_folds": 5,
+      "mean_specificity": 0.8128205128141536,
+      "std_specificity": 0.10371153033844613
+    },
+    "best_combination_index": 47,
+    "model_type": "binary"
+  }
+}

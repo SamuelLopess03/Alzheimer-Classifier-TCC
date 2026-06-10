@@ -1,0 +1,313 @@
+{
+  "combination_index": 48,
+  "params": {
+    "learning_rate": "1e-3",
+    "dropout": 0.5,
+    "hidden_units": 128,
+    "optimizer": "adamw",
+    "batch_size": 32,
+    "loss_function": "crossentropy"
+  },
+  "folds": {
+    "1": {
+      "best_f1_score": 0.6972972972972973,
+      "best_metrics": {
+        "fold": 1,
+        "epoch": 10,
+        "val_loss": 0.8315237530640194,
+        "accuracy": 0.7321428571428571,
+        "balanced_accuracy": 0.7719141323792487,
+        "matthews_correlation_coefficient": 0.4639669759802291,
+        "cohen_kappa": 0.41988950276243087,
+        "precision": 0.826264880952381,
+        "recall": 0.7321428571428571,
+        "f1_score": 0.7523166023166024,
+        "precision_macro": 0.6979166666666666,
+        "recall_macro": 0.7719141323792487,
+        "f1_macro": 0.6972972972972973,
+        "precision_per_class": [
+          0.4583333333333333,
+          0.9375
+        ],
+        "recall_per_class": [
+          0.8461538461538461,
+          0.6976744186046512
+        ],
+        "f1_per_class": [
+          0.5945945945945946,
+          0.8
+        ],
+        "support_per_class": [
+          13,
+          43
+        ],
+        "confusion_matrix": [
+          [
+            11,
+            2
+          ],
+          [
+            13,
+            30
+          ]
+        ],
+        "classification_report": "              precision    recall  f1-score   support\n\n    Demented       0.46      0.85      0.59        13\nNon Demented       0.94      0.70      0.80        43\n\n    accuracy                           0.73        56\n   macro avg       0.70      0.77      0.70        56\nweighted avg       0.83      0.73      0.75        56\n",
+        "specificity": 0.8461538461473372,
+        "negative_predictive_value": 0.4583333333314236,
+        "false_positive_rate": 0.1538461538449704,
+        "false_negative_rate": 0.3023255813946457,
+        "true_negative": 11,
+        "false_positive": 2,
+        "false_negative": 13,
+        "true_positive": 30
+      },
+      "checkpoint_path": null,
+      "fold": 1,
+      "model_type": "binary"
+    },
+    "2": {
+      "best_f1_score": 0.9175412293853074,
+      "best_metrics": {
+        "fold": 2,
+        "epoch": 2,
+        "val_loss": 0.49689530505650287,
+        "accuracy": 0.9454545454545454,
+        "balanced_accuracy": 0.8846153846153846,
+        "matthews_correlation_coefficient": 0.8473185457363234,
+        "cohen_kappa": 0.835820895522388,
+        "precision": 0.9490909090909091,
+        "recall": 0.9454545454545454,
+        "f1_score": 0.9428376720730546,
+        "precision_macro": 0.9666666666666667,
+        "recall_macro": 0.8846153846153846,
+        "f1_macro": 0.9175412293853074,
+        "precision_per_class": [
+          1.0,
+          0.9333333333333333
+        ],
+        "recall_per_class": [
+          0.7692307692307693,
+          1.0
+        ],
+        "f1_per_class": [
+          0.8695652173913043,
+          0.9655172413793104
+        ],
+        "support_per_class": [
+          13,
+          42
+        ],
+        "confusion_matrix": [
+          [
+            10,
+            3
+          ],
+          [
+            0,
+            42
+          ]
+        ],
+        "classification_report": "              precision    recall  f1-score   support\n\n    Demented       1.00      0.77      0.87        13\nNon Demented       0.93      1.00      0.97        42\n\n    accuracy                           0.95        55\n   macro avg       0.97      0.88      0.92        55\nweighted avg       0.95      0.95      0.94        55\n",
+        "specificity": 0.7692307692248521,
+        "negative_predictive_value": 0.99999999999,
+        "false_positive_rate": 0.23076923076745562,
+        "false_negative_rate": 0.0,
+        "true_negative": 10,
+        "false_positive": 3,
+        "false_negative": 0,
+        "true_positive": 42
+      },
+      "checkpoint_path": null,
+      "fold": 2,
+      "model_type": "binary"
+    },
+    "3": {
+      "best_f1_score": 0.848901098901099,
+      "best_metrics": {
+        "fold": 3,
+        "epoch": 3,
+        "val_loss": 0.5323973237604335,
+        "accuracy": 0.8909090909090909,
+        "balanced_accuracy": 0.848901098901099,
+        "matthews_correlation_coefficient": 0.6978021978021978,
+        "cohen_kappa": 0.6978021978021978,
+        "precision": 0.8909090909090909,
+        "recall": 0.8909090909090909,
+        "f1_score": 0.8909090909090909,
+        "precision_macro": 0.848901098901099,
+        "recall_macro": 0.848901098901099,
+        "f1_macro": 0.848901098901099,
+        "precision_per_class": [
+          0.7692307692307693,
+          0.9285714285714286
+        ],
+        "recall_per_class": [
+          0.7692307692307693,
+          0.9285714285714286
+        ],
+        "f1_per_class": [
+          0.7692307692307693,
+          0.9285714285714286
+        ],
+        "support_per_class": [
+          13,
+          42
+        ],
+        "confusion_matrix": [
+          [
+            10,
+            3
+          ],
+          [
+            3,
+            39
+          ]
+        ],
+        "classification_report": "              precision    recall  f1-score   support\n\n    Demented       0.77      0.77      0.77        13\nNon Demented       0.93      0.93      0.93        42\n\n    accuracy                           0.89        55\n   macro avg       0.85      0.85      0.85        55\nweighted avg       0.89      0.89      0.89        55\n",
+        "specificity": 0.7692307692248521,
+        "negative_predictive_value": 0.7692307692248521,
+        "false_positive_rate": 0.23076923076745562,
+        "false_negative_rate": 0.07142857142840135,
+        "true_negative": 10,
+        "false_positive": 3,
+        "false_negative": 3,
+        "true_positive": 39
+      },
+      "checkpoint_path": null,
+      "fold": 3,
+      "model_type": "binary"
+    },
+    "4": {
+      "best_f1_score": 0.8934108527131783,
+      "best_metrics": {
+        "fold": 4,
+        "epoch": 7,
+        "val_loss": 0.5315900229025579,
+        "accuracy": 0.9272727272727272,
+        "balanced_accuracy": 0.8727106227106227,
+        "matthews_correlation_coefficient": 0.7917269111451889,
+        "cohen_kappa": 0.7872340425531915,
+        "precision": 0.9264462809917355,
+        "recall": 0.9272727272727272,
+        "f1_score": 0.9250880902043693,
+        "precision_macro": 0.9204545454545454,
+        "recall_macro": 0.8727106227106227,
+        "f1_macro": 0.8934108527131783,
+        "precision_per_class": [
+          0.9090909090909091,
+          0.9318181818181818
+        ],
+        "recall_per_class": [
+          0.7692307692307693,
+          0.9761904761904762
+        ],
+        "f1_per_class": [
+          0.8333333333333334,
+          0.9534883720930233
+        ],
+        "support_per_class": [
+          13,
+          42
+        ],
+        "confusion_matrix": [
+          [
+            10,
+            3
+          ],
+          [
+            1,
+            41
+          ]
+        ],
+        "classification_report": "              precision    recall  f1-score   support\n\n    Demented       0.91      0.77      0.83        13\nNon Demented       0.93      0.98      0.95        42\n\n    accuracy                           0.93        55\n   macro avg       0.92      0.87      0.89        55\nweighted avg       0.93      0.93      0.93        55\n",
+        "specificity": 0.7692307692248521,
+        "negative_predictive_value": 0.9090909090826447,
+        "false_positive_rate": 0.23076923076745562,
+        "false_negative_rate": 0.023809523809467117,
+        "true_negative": 10,
+        "false_positive": 3,
+        "false_negative": 1,
+        "true_positive": 41
+      },
+      "checkpoint_path": null,
+      "fold": 4,
+      "model_type": "binary"
+    },
+    "5": {
+      "best_f1_score": 0.7355769230769231,
+      "best_metrics": {
+        "fold": 5,
+        "epoch": 4,
+        "val_loss": 0.8040879240286523,
+        "accuracy": 0.7818181818181819,
+        "balanced_accuracy": 0.8003875968992249,
+        "matthews_correlation_coefficient": 0.5158077023707843,
+        "cohen_kappa": 0.484375,
+        "precision": 0.8462337662337662,
+        "recall": 0.7818181818181819,
+        "f1_score": 0.797902097902098,
+        "precision_macro": 0.7214285714285714,
+        "recall_macro": 0.8003875968992249,
+        "f1_macro": 0.7355769230769231,
+        "precision_per_class": [
+          0.5,
+          0.9428571428571428
+        ],
+        "recall_per_class": [
+          0.8333333333333334,
+          0.7674418604651163
+        ],
+        "f1_per_class": [
+          0.625,
+          0.8461538461538461
+        ],
+        "support_per_class": [
+          12,
+          43
+        ],
+        "confusion_matrix": [
+          [
+            10,
+            2
+          ],
+          [
+            10,
+            33
+          ]
+        ],
+        "classification_report": "              precision    recall  f1-score   support\n\n    Demented       0.50      0.83      0.62        12\nNon Demented       0.94      0.77      0.85        43\n\n    accuracy                           0.78        55\n   macro avg       0.72      0.80      0.74        55\nweighted avg       0.85      0.78      0.80        55\n",
+        "specificity": 0.8333333333263889,
+        "negative_predictive_value": 0.49999999999750006,
+        "false_positive_rate": 0.16666666666527777,
+        "false_negative_rate": 0.23255813953434287,
+        "true_negative": 10,
+        "false_positive": 2,
+        "false_negative": 10,
+        "true_positive": 33
+      },
+      "checkpoint_path": null,
+      "fold": 5,
+      "model_type": "binary"
+    }
+  },
+  "status": "completed",
+  "aggregated_metrics": {
+    "mean_f1": 0.849134594085308,
+    "std_f1": 0.07763169646854108,
+    "mean_accuracy": 0.8410389610389611,
+    "std_accuracy": 0.08710249321636356,
+    "mean_balanced_accuracy": 0.8362743845301985,
+    "std_balanced_accuracy": 0.053796940948013384,
+    "mean_precision": 0.8810528790445471,
+    "std_precision": 0.04310358304740026,
+    "mean_recall": 0.8410389610389611,
+    "std_recall": 0.08710249321636356,
+    "mean_loss": 0.5824019813929409,
+    "std_loss": 0.07337595763274282,
+    "mean_mcc": 0.6410061270210761,
+    "std_mcc": 0.14835312566588915,
+    "n_folds": 5,
+    "mean_specificity": 0.8269230769166198,
+    "std_specificity": 0.062017367294246416
+  }
+}

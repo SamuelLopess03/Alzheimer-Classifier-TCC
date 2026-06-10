@@ -1,0 +1,339 @@
+{
+  "combination_index": 22,
+  "params": {
+    "learning_rate": "1e-3",
+    "dropout": 0.5,
+    "hidden_units": 64,
+    "optimizer": "adamw",
+    "batch_size": 16,
+    "loss_function": "crossentropy"
+  },
+  "folds": {
+    "1": {
+      "best_f1_score": 0.8194444444444444,
+      "best_metrics": {
+        "fold": 1,
+        "epoch": 15,
+        "val_loss": 0.6901696433826369,
+        "accuracy": 0.8461538461538461,
+        "balanced_accuracy": 0.8194444444444444,
+        "matthews_correlation_coefficient": 0.6388888888888888,
+        "cohen_kappa": 0.6388888888888888,
+        "precision": 0.8461538461538461,
+        "recall": 0.8461538461538461,
+        "f1_score": 0.8461538461538461,
+        "precision_macro": 0.8194444444444444,
+        "recall_macro": 0.8194444444444444,
+        "f1_macro": 0.8194444444444444,
+        "precision_per_class": [
+          0.75,
+          0.8888888888888888
+        ],
+        "recall_per_class": [
+          0.75,
+          0.8888888888888888
+        ],
+        "f1_per_class": [
+          0.75,
+          0.8888888888888888
+        ],
+        "support_per_class": [
+          4,
+          9
+        ],
+        "confusion_matrix": [
+          [
+            3,
+            1
+          ],
+          [
+            1,
+            8
+          ]
+        ],
+        "classification_report": "                        precision    recall  f1-score   support\n\nMild+Moderate Dementia       0.75      0.75      0.75         4\n    Very mild Dementia       0.89      0.89      0.89         9\n\n              accuracy                           0.85        13\n             macro avg       0.82      0.82      0.82        13\n          weighted avg       0.85      0.85      0.85        13\n",
+        "specificity": 0.8194444444301312,
+        "specificity_macro": 0.8194444444301312,
+        "negative_predictive_value": 0.8194444444301312,
+        "npv_macro": 0.8194444444301312,
+        "specificity_per_class": [
+          0.8888888888790123,
+          0.74999999998125
+        ],
+        "npv_per_class": [
+          0.8888888888790123,
+          0.74999999998125
+        ]
+      },
+      "checkpoint_path": null,
+      "fold": 1,
+      "model_type": "multiclass"
+    },
+    "2": {
+      "best_f1_score": 0.7450980392156863,
+      "best_metrics": {
+        "fold": 2,
+        "epoch": 3,
+        "val_loss": 0.7171383716013967,
+        "accuracy": 0.7692307692307693,
+        "balanced_accuracy": 0.7638888888888888,
+        "matthews_correlation_coefficient": 0.5006939628599933,
+        "cohen_kappa": 0.49350649350649356,
+        "precision": 0.7903846153846155,
+        "recall": 0.7692307692307693,
+        "f1_score": 0.77526395173454,
+        "precision_macro": 0.7375,
+        "recall_macro": 0.7638888888888888,
+        "f1_macro": 0.7450980392156863,
+        "precision_per_class": [
+          0.6,
+          0.875
+        ],
+        "recall_per_class": [
+          0.75,
+          0.7777777777777778
+        ],
+        "f1_per_class": [
+          0.6666666666666666,
+          0.8235294117647058
+        ],
+        "support_per_class": [
+          4,
+          9
+        ],
+        "confusion_matrix": [
+          [
+            3,
+            1
+          ],
+          [
+            2,
+            7
+          ]
+        ],
+        "classification_report": "                        precision    recall  f1-score   support\n\nMild+Moderate Dementia       0.60      0.75      0.67         4\n    Very mild Dementia       0.88      0.78      0.82         9\n\n              accuracy                           0.77        13\n             macro avg       0.74      0.76      0.75        13\n          weighted avg       0.79      0.77      0.78        13\n",
+        "specificity": 0.7638888888751929,
+        "specificity_macro": 0.7638888888751929,
+        "negative_predictive_value": 0.7374999999885312,
+        "npv_macro": 0.7374999999885312,
+        "specificity_per_class": [
+          0.7777777777691358,
+          0.74999999998125
+        ],
+        "npv_per_class": [
+          0.8749999999890625,
+          0.599999999988
+        ]
+      },
+      "checkpoint_path": null,
+      "fold": 2,
+      "model_type": "multiclass"
+    },
+    "3": {
+      "best_f1_score": 0.8194444444444444,
+      "best_metrics": {
+        "fold": 3,
+        "epoch": 4,
+        "val_loss": 0.5583789935525583,
+        "accuracy": 0.8461538461538461,
+        "balanced_accuracy": 0.8194444444444444,
+        "matthews_correlation_coefficient": 0.6388888888888888,
+        "cohen_kappa": 0.6388888888888888,
+        "precision": 0.8461538461538461,
+        "recall": 0.8461538461538461,
+        "f1_score": 0.8461538461538461,
+        "precision_macro": 0.8194444444444444,
+        "recall_macro": 0.8194444444444444,
+        "f1_macro": 0.8194444444444444,
+        "precision_per_class": [
+          0.75,
+          0.8888888888888888
+        ],
+        "recall_per_class": [
+          0.75,
+          0.8888888888888888
+        ],
+        "f1_per_class": [
+          0.75,
+          0.8888888888888888
+        ],
+        "support_per_class": [
+          4,
+          9
+        ],
+        "confusion_matrix": [
+          [
+            3,
+            1
+          ],
+          [
+            1,
+            8
+          ]
+        ],
+        "classification_report": "                        precision    recall  f1-score   support\n\nMild+Moderate Dementia       0.75      0.75      0.75         4\n    Very mild Dementia       0.89      0.89      0.89         9\n\n              accuracy                           0.85        13\n             macro avg       0.82      0.82      0.82        13\n          weighted avg       0.85      0.85      0.85        13\n",
+        "specificity": 0.8194444444301312,
+        "specificity_macro": 0.8194444444301312,
+        "negative_predictive_value": 0.8194444444301312,
+        "npv_macro": 0.8194444444301312,
+        "specificity_per_class": [
+          0.8888888888790123,
+          0.74999999998125
+        ],
+        "npv_per_class": [
+          0.8888888888790123,
+          0.74999999998125
+        ]
+      },
+      "checkpoint_path": null,
+      "fold": 3,
+      "model_type": "multiclass"
+    },
+    "4": {
+      "best_f1_score": 0.6285714285714286,
+      "best_metrics": {
+        "fold": 4,
+        "epoch": 4,
+        "val_loss": 0.636554804383492,
+        "accuracy": 0.7692307692307693,
+        "balanced_accuracy": 0.6166666666666667,
+        "matthews_correlation_coefficient": 0.27247463045653303,
+        "cohen_kappa": 0.26415094339622636,
+        "precision": 0.7447552447552448,
+        "recall": 0.7692307692307693,
+        "f1_score": 0.7516483516483518,
+        "precision_macro": 0.6590909090909092,
+        "recall_macro": 0.6166666666666667,
+        "f1_macro": 0.6285714285714286,
+        "precision_per_class": [
+          0.5,
+          0.8181818181818182
+        ],
+        "recall_per_class": [
+          0.3333333333333333,
+          0.9
+        ],
+        "f1_per_class": [
+          0.4,
+          0.8571428571428571
+        ],
+        "support_per_class": [
+          3,
+          10
+        ],
+        "confusion_matrix": [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            9
+          ]
+        ],
+        "classification_report": "                        precision    recall  f1-score   support\n\nMild+Moderate Dementia       0.50      0.33      0.40         3\n    Very mild Dementia       0.82      0.90      0.86        10\n\n              accuracy                           0.77        13\n             macro avg       0.66      0.62      0.63        13\n          weighted avg       0.74      0.77      0.75        13\n",
+        "specificity": 0.6166666666566111,
+        "specificity_macro": 0.6166666666566111,
+        "negative_predictive_value": 0.6590909090746901,
+        "npv_macro": 0.6590909090746901,
+        "specificity_per_class": [
+          0.899999999991,
+          0.3333333333222222
+        ],
+        "npv_per_class": [
+          0.8181818181743802,
+          0.499999999975
+        ]
+      },
+      "checkpoint_path": null,
+      "fold": 4,
+      "model_type": "multiclass"
+    },
+    "5": {
+      "best_f1_score": 0.6210526315789473,
+      "best_metrics": {
+        "fold": 5,
+        "epoch": 3,
+        "val_loss": 0.7813889271683163,
+        "accuracy": 0.75,
+        "balanced_accuracy": 0.611111111111111,
+        "matthews_correlation_coefficient": 0.25819888974716115,
+        "cohen_kappa": 0.25,
+        "precision": 0.725,
+        "recall": 0.75,
+        "f1_score": 0.731578947368421,
+        "precision_macro": 0.65,
+        "recall_macro": 0.611111111111111,
+        "f1_macro": 0.6210526315789473,
+        "precision_per_class": [
+          0.5,
+          0.8
+        ],
+        "recall_per_class": [
+          0.3333333333333333,
+          0.8888888888888888
+        ],
+        "f1_per_class": [
+          0.4,
+          0.8421052631578947
+        ],
+        "support_per_class": [
+          3,
+          9
+        ],
+        "confusion_matrix": [
+          [
+            1,
+            2
+          ],
+          [
+            1,
+            8
+          ]
+        ],
+        "classification_report": "                        precision    recall  f1-score   support\n\nMild+Moderate Dementia       0.50      0.33      0.40         3\n    Very mild Dementia       0.80      0.89      0.84         9\n\n              accuracy                           0.75        12\n             macro avg       0.65      0.61      0.62        12\n          weighted avg       0.72      0.75      0.73        12\n",
+        "specificity": 0.6111111111006172,
+        "specificity_macro": 0.6111111111006172,
+        "negative_predictive_value": 0.6499999999835,
+        "npv_macro": 0.6499999999835,
+        "specificity_per_class": [
+          0.8888888888790123,
+          0.3333333333222222
+        ],
+        "npv_per_class": [
+          0.799999999992,
+          0.499999999975
+        ]
+      },
+      "checkpoint_path": null,
+      "fold": 5,
+      "model_type": "multiclass"
+    }
+  },
+  "status": "completed",
+  "aggregated_metrics": {
+    "mean_f1": 0.7986836692719045,
+    "std_f1": 0.021101034378096843,
+    "mean_accuracy": 0.8128205128205128,
+    "std_accuracy": 0.035897435897435874,
+    "mean_balanced_accuracy": 0.7222222222222221,
+    "std_balanced_accuracy": 0.04564354645876384,
+    "mean_precision": 0.838065268065268,
+    "std_precision": 0.03908663118260888,
+    "mean_recall": 0.8128205128205128,
+    "std_recall": 0.035897435897435874,
+    "mean_loss": 0.6309491356822098,
+    "std_loss": 0.047215091457041614,
+    "mean_mcc": 0.5380538638697282,
+    "std_mcc": 0.05191347871050049,
+    "n_folds": 5,
+    "mean_specificity": 0.7222222222100493,
+    "std_specificity": 0.045643546457600236,
+    "mean_precision_macro": 0.841969696969697,
+    "std_precision_macro": 0.08534399414725344,
+    "mean_recall_macro": 0.7222222222222221,
+    "std_recall_macro": 0.04564354645876384,
+    "mean_f1_macro": 0.7356149732620321,
+    "std_f1_macro": 0.030628876183732535
+  }
+}
