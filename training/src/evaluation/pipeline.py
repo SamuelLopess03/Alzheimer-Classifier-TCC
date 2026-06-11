@@ -14,7 +14,7 @@ from src.utils.config import (
     load_binary_config,
     load_multiclass_config,
     load_hyperparameters_config,
-    LOGS_PATH
+    MODELS_PATH
 )
 from src.utils.experiments import find_best_experiment, extract_best_hyperparameters
 from ..visualization.wandb_logger import init_wandb_run, finish_wandb_run
@@ -87,9 +87,7 @@ def run_inference_pipeline(
     test_dataset = load_test_dataset(data_path, model_type)
     print(f"Dataset de teste carregado: {len(test_dataset)} amostras.")
 
-    checkpoint_dir = os.path.normpath(
-        os.path.join(os.path.dirname(__file__), str(config['checkpoint']['save_path']))
-    )
+    checkpoint_dir = str(MODELS_PATH / model_type)
     
     checkpoint_files = sorted(glob.glob(os.path.join(checkpoint_dir, "best_model_fold_*.pth")))
     

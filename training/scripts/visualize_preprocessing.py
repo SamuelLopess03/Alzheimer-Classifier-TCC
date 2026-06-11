@@ -8,7 +8,6 @@ from pathlib import Path
 from PIL import Image
 from collections import defaultdict
 
-# Adiciona o diretório raiz ao path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from src.data.preprocessing import (
@@ -20,11 +19,12 @@ from src.data.preprocessing import (
 from src.data.augmentation import get_alzheimer_grayscale_augmentation
 from src.data.subject_manager import extract_subject_id, extract_slice_index
 
-# ─── Caminhos base ─────────────────────────────────────────────────────────────
-SPLITS_DIR    = Path(__file__).resolve().parent.parent / "shared" / "data" / "splits"
-OUTPUT_BASE   = Path(__file__).resolve().parent.parent / "shared" / "visualization_augmented"
+BASE_DIR = Path(__file__).resolve().parent.parent
+SHARED_DIR = BASE_DIR.parent / 'shared'
 
-# ─── Abordagens e suas classes (lê do split de treino) ─────────────────────────
+SPLITS_DIR    = SHARED_DIR / "data" / "splits"
+OUTPUT_BASE   = SHARED_DIR / "visualization_augmented"
+
 APPROACHES = {
     "binary": {
         "classes": ["Non Demented", "Demented"],
@@ -45,11 +45,7 @@ ARCHITECTURES = [
     "swin_v2_tiny",
 ]
 
-
-# ─── Funções auxiliares ─────────────────────────────────────────────────────────
-
 def select_central_sample(cls_dir: Path) -> Path | None:
-    """Agrupa fatias por paciente, sorteia um paciente e retorna a fatia central."""
     files = list(cls_dir.glob("*.jpg")) + list(cls_dir.glob("*.jpeg"))
     if not files:
         return None
@@ -77,7 +73,6 @@ def process_panel_image(image: np.ndarray, title: str, size_str: str,
 
 def build_flow_panel(img_path: Path, arch: str,
                      mean, std, target_size_config: int) -> np.ndarray:
-    """Aplica o fluxo completo de pré-processamento + augmentation e monta o painel."""
     real_pipeline = get_alzheimer_grayscale_augmentation(
         architecture_name=arch,
         dataset_size=10,        # força nível 'heavy' para visualização clara
@@ -87,15 +82,12 @@ def build_flow_panel(img_path: Path, arch: str,
     img_orig = cv2.imread(str(img_path), cv2.IMREAD_GRAYSCALE)
     h_orig, w_orig = img_orig.shape
 
-    # Crop de fundo preto
     img_cropped = crop_mri_background(img_orig)
     h_crop, w_crop = img_cropped.shape
 
-    # Prepara para augmentation
     img_prepped = prepare_image_for_augmentation(img_orig)
     img_resized = cv2.resize(img_prepped, (target_size_config, target_size_config))
 
-    # 3 versões augmentadas com o pipeline real
     augmented_versions = []
     for _ in range(3):
         aug_result = real_pipeline(image=img_prepped)
@@ -115,9 +107,6 @@ def build_flow_panel(img_path: Path, arch: str,
 
     return np.hstack([p_orig, p_cropped, p_resized, p_aug1, p_aug2, p_aug3])
 
-
-# ─── Main ───────────────────────────────────────────────────────────────────────
-
 def main():
     print("=" * 85)
     print("  VISUALIZADOR DE PRÉ-PROCESSAMENTO E DATA AUGMENTATION (PIPELINE REAL MULTI-ARQ)")
@@ -132,7 +121,6 @@ def main():
         print(f"  ABORDAGEM: {approach_name.upper()}  |  Split: {split}  |  Dir: {split_dir}")
         print(f"{'#' * 85}")
 
-        # ── 1. Seleciona fatia central por paciente para cada classe ──────────
         samples: dict[str, Path] = {}
         print("\nSelecionando amostras (fatia central por paciente):")
 
@@ -156,7 +144,6 @@ def main():
             print(f"\n  [Erro] Nenhuma amostra encontrada para a abordagem '{approach_name}'. Pulando.")
             continue
 
-        # ── 2. Processa cada arquitetura ──────────────────────────────────────
         for arch in ARCHITECTURES:
             print(f"\n{'-' * 85}")
             print(f"  ARQUITETURA: {arch.upper()}")
@@ -168,7 +155,6 @@ def main():
             target_size_cfg   = preprocessor.config["image_size"]
             print(f"  Config: Dimensões={target_size_cfg}x{target_size_cfg} | Mean={mean} | Std={std}")
 
-            # Diretório de saída organizado por abordagem → arquitetura
             out_dir = OUTPUT_BASE / approach_name / arch
             out_dir.mkdir(parents=True, exist_ok=True)
 

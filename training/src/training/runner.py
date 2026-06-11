@@ -71,6 +71,7 @@ def run_final_training_flow(model_type: str, experiments_path: str, data_path: s
     is_multiclass = (model_type == 'multiclass')
     config = get_training_config(is_multiclass)
     device = get_pytorch_device()
+    wandb_cfg = config.get('logging', {}).get('wandb', {})
 
     print_banner("PIPELINE: TREINAMENTO FINAL", f"Model Type: {model_type.upper()}")
 

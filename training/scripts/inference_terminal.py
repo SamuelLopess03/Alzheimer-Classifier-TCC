@@ -12,7 +12,7 @@ from src.utils.hardware import get_pytorch_device
 from src.data.subject_manager import extract_slice_index
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_OUTPUT_PATH = str(BASE_DIR / 'shared/gradcam_outputs')
+DEFAULT_OUTPUT_PATH = str(BASE_DIR.parent / 'shared/gradcam_outputs')
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(

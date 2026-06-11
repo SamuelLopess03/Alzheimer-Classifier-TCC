@@ -14,7 +14,7 @@ from ..data.subject_manager import get_subject_ids_from_dataset
 from ..evaluation import evaluate_performance
 from ..visualization.wandb_logger import log_final_training_metrics
 from ..visualization.terminal import print_epoch_log
-from src.utils.config import load_hyperparameters_config
+from src.utils.config import load_hyperparameters_config, MODELS_PATH
 from src.utils.hardware import get_pytorch_device
 
 def run_training_process(
@@ -69,9 +69,10 @@ def run_training_process(
 
     checkpoint_file = None
     if is_final_training:
-        save_path = os.path.join(os.path.dirname(__file__), str(checkpoint_config['save_path']))
-        os.makedirs(save_path, exist_ok=True)
-        checkpoint_file = os.path.join(save_path, "best_model.pth")
+        model_type_dir = "multiclass" if is_multiclass else "binary"
+        save_path = MODELS_PATH / model_type_dir
+        save_path.mkdir(parents=True, exist_ok=True)
+        checkpoint_file = str(save_path / f"best_model_fold_{fold_number}.pth")
         print(f"Checkpoint será salvo em: {checkpoint_file}")
 
     best_f1_score = 0.0

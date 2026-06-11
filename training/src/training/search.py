@@ -14,7 +14,7 @@ from ..models import (
 )
 from .factory import get_training_config, generate_random_combinations
 from .trainer import run_training_process
-from src.utils.config import load_hyperparameters_config
+from src.utils.config import load_hyperparameters_config, LOGS_PATH
 from ..evaluation import calculate_combined_score, aggregate_fold_metrics
 from ..visualization.wandb_logger import (
     init_wandb_run, 
@@ -204,13 +204,11 @@ def _report_final_results(results, executed_indices, total_combos, architecture_
 
 def evaluate_hyperparameters(param_grid, architecture_name, device, train_dataset, model_type='binary', n_folds=5, max_combinations=None):
     config = get_training_config(model_type == 'multiclass')
-    hyperparams_config = load_hyperparameters_config()
     class_names = config['model']['class_names']
     
     _initialize_search_session(architecture_name, model_type, n_folds, max_combinations)
     
-    save_path = os.path.join(os.path.dirname(__file__), str(hyperparams_config['results']['save_path']))
-    checkpoint_manager = SearchCheckpointManager(os.path.join(save_path, 'experiments'))
+    checkpoint_manager = SearchCheckpointManager(LOGS_PATH / 'experiments')
     
     combinations, param_names = generate_random_combinations(param_grid, max_combinations, random_state=config['data']['random_seed'])
     total_combinations = len(combinations)

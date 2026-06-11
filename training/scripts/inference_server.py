@@ -6,8 +6,12 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
 import uvicorn
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from src.models.inference import InferenceWrapper
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+SHARED_DIR = BASE_DIR.parent / 'shared'
 
 wrapper = None
 
@@ -47,7 +51,7 @@ async def internal_predict(
         img_tensor = wrapper.load_image(image_stream)
         result = wrapper.predict_tensor(img_tensor)
         
-        gradcam_dir = f"/app/shared/gradcam_outputs/{subject_id}"
+        gradcam_dir = str(SHARED_DIR / f"gradcam_outputs/{subject_id}")
         gradcam_tensor = img_tensor.to(wrapper.device).squeeze(0)
         wrapper.generate_gradcam(
             image_path=None,
@@ -98,7 +102,7 @@ async def internal_predict_subject(
             paired.sort(key=lambda x: extract_slice_index(x[0]))
             
             central_pairs = get_central_elements(paired, gradcam_samples)
-            gradcam_dir = f"/app/shared/gradcam_outputs/{subject_id}"
+            gradcam_dir = str(SHARED_DIR / f"gradcam_outputs/{subject_id}")
             
             for i, (fname, tensor) in enumerate(central_pairs):
                 gradcam_tensor = tensor.to(wrapper.device).squeeze(0)

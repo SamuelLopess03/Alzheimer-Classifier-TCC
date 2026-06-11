@@ -153,10 +153,3 @@ search_strategy:
   max_combinations: 60
   validation_strategy: "kfold"
   n_folds: 5
-
-# ------------------------------------------------------------
-# 8. RESULTADOS E SAÍDA
-# ------------------------------------------------------------
-results:
-  save_path: "../../shared/logs"
-  save_checkpoints: true

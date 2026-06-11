@@ -13,7 +13,8 @@ import cv2
 from src.utils.config import (
     load_binary_config, 
     load_multiclass_config, 
-    load_hyperparameters_config
+    load_hyperparameters_config,
+    MODELS_PATH
 )
 from src.utils.hardware import get_pytorch_device
 from .architectures import create_model
@@ -121,10 +122,11 @@ class InferenceWrapper(nn.Module):
                 all_bin_probs.append(torch.softmax(output, dim=1))
             
             avg_binary_probs = torch.stack(all_bin_probs).mean(dim=0)
-            binary_pred = torch.argmax(avg_binary_probs, dim=1)
+            subject_binary_probs = avg_binary_probs.mean(dim=0)
+            subject_binary_pred = torch.argmax(subject_binary_probs).item()
 
             avg_multiclass_probs = None
-            if torch.any(binary_pred == 0):
+            if subject_binary_pred == 0:
                 x_multi = self.multiclass_transform(x)
                 
                 all_multi_probs = []
@@ -191,7 +193,8 @@ class InferenceWrapper(nn.Module):
         return models
 
     def _resolve_checkpoint_dir(self, config: Dict) -> str:
-        return os.path.normpath(os.path.join(os.path.dirname(__file__), str(config['checkpoint']['save_path'])))
+        model_type_dir = os.path.basename(os.path.normpath(config['checkpoint']['save_path']))
+        return str(MODELS_PATH / model_type_dir)
 
     def _ensure_models_loaded(self):
         if not self.binary_models or not self.multiclass_models:

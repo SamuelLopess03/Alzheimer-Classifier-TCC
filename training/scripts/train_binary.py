@@ -11,9 +11,11 @@ from src.visualization.terminal import print_banner, print_section
 from scripts.prepare_data import prepare_data
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_DATA_PATH = str(BASE_DIR / 'shared/data')
-DEFAULT_EXPERIMENTS_PATH = str(BASE_DIR / 'shared/logs/experiments')
-DEFAULT_MODELS_PATH = str(BASE_DIR / 'shared/models')
+SHARED_DIR = BASE_DIR.parent / 'shared'
+
+DEFAULT_DATA_PATH = str(SHARED_DIR / 'data')
+DEFAULT_EXPERIMENTS_PATH = str(SHARED_DIR / 'logs/experiments')
+DEFAULT_MODELS_PATH = str(SHARED_DIR / 'models')
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(

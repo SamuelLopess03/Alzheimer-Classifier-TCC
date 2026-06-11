@@ -29,8 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         '--output-path',
         type=str,
-        default=os.path.join(os.path.dirname(__file__), '..', 'shared/data'),
-        help='Base output path (default: ./shared/data)'
+        default=None,
+        help='Base output path (default: shared/data de acordo com ambiente)'
     )
 
     parser.add_argument(
@@ -65,7 +65,7 @@ def prepare_data(
         # Resolve caminhos padrão se não fornecidos
         base_dir = Path(__file__).resolve().parent.parent
         if output_path is None:
-            output_path = str(base_dir / 'shared/data')
+            output_path = str(base_dir.parent / 'shared/data')
         if kaggle_json is None:
             kaggle_json = str(base_dir / 'kaggle.json')
 

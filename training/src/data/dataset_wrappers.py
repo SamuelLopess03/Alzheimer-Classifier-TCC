@@ -96,11 +96,11 @@ class SyntheticAugmentedDataset(Dataset):
         return augmented['image'], label
 
 class SubjectSamplingSubset(Subset):
-    def __init__(self, dataset, subject_indices, max_slices, strategy='random'):
+    def __init__(self, dataset, subject_indices, max_slices, strategy='random', random_state=None):
         self.subject_indices = subject_indices
         self.max_slices = max_slices
         self.strategy = strategy
-        self.rng = np.random.default_rng()
+        self.rng = np.random.default_rng(random_state)
         
         self.subject_labels = {sid: dataset.samples[indices[0]][1] for sid, indices in subject_indices.items()}
         self.synthetic_quotas = {}

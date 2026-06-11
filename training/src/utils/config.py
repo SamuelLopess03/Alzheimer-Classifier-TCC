@@ -7,7 +7,9 @@ from .hardware import apply_hardware_overrides
 
 TRAINING_ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIGS_PATH = TRAINING_ROOT / "configs"
+
 SHARED_PATH = TRAINING_ROOT.parent / "shared"
+
 LOGS_PATH = SHARED_PATH / "logs"
 MODELS_PATH = SHARED_PATH / "models"
 
