@@ -10,7 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONIOENCODING=utf-8
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libglib2.0-0 libsm6 libxext6 libxrender-dev ffmpeg \
+    build-essential libglib2.0-0 libsm6 libxext6 libxrender-dev ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar requisitos e instalar dependências (removendo torch redundante)
