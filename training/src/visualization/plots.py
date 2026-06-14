@@ -99,16 +99,20 @@ def plot_roc_curve(
     y_pred_proba: np.ndarray,
     class_names: List[str],
     is_multiclass: bool = False,
-    figsize: Optional[tuple] = None
+    figsize: Optional[tuple] = None,
+    subject_ids: Optional[List[str]] = None
 ) -> Figure:
     if figsize is None:
         figsize = (8, 6) if not is_multiclass else (10, 8)
         
     from ..evaluation import calculate_roc_metrics
-    roc_metrics = calculate_roc_metrics(y_true, y_pred_proba, is_multiclass=is_multiclass)
+    roc_metrics = calculate_roc_metrics(y_true, y_pred_proba, is_multiclass=is_multiclass, subject_ids=subject_ids)
     fig, ax = plt.subplots(figsize=figsize)
 
-    if not is_multiclass:
+    num_classes = y_pred_proba.shape[1] if (isinstance(y_pred_proba, np.ndarray) and y_pred_proba.ndim == 2) else 2
+    treat_as_binary = not is_multiclass or num_classes == 2
+
+    if treat_as_binary:
         fpr, tpr = roc_metrics['fpr'], roc_metrics['tpr']
         roc_auc = roc_metrics['auc_roc']
         optimal_idx = roc_metrics['optimal_idx']

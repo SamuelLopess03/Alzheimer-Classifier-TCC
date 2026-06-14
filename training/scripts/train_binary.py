@@ -46,8 +46,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--data-path', type=str, default=DEFAULT_DATA_PATH)
     parser.add_argument('--experiments-path', type=str, default=DEFAULT_EXPERIMENTS_PATH)
     parser.add_argument('--models-path', type=str, default=DEFAULT_MODELS_PATH)
-    parser.add_argument('--generate-gradcam', action='store_true')
-    parser.add_argument('--gradcam-samples', type=int, default=10)
+    parser.add_argument('--no-gradcam', dest='generate_gradcam', action='store_false', help="Desabilitar geração do Grad-CAM")
+    parser.set_defaults(generate_gradcam=True)
+    parser.add_argument('--gradcam-samples', type=int, default=5, help="Número de amostras para o Grad-CAM")
 
     return parser.parse_args()
 

@@ -153,8 +153,9 @@ def _run_combination_folds(idx, params, n_folds, all_splits, architecture_name, 
 
             checkpoint_manager.save_fold_result(checkpoint_key, idx + 1, fold_idx + 1, result)
 
-            f1_key = 'macro_f1' if is_multiclass else 'f1_score'
-            print(f"  > [OK] Fold {fold_idx + 1} concluído. {f1_key.replace('_', ' ').upper()}: {result.get(f1_key, 0):.4f}")
+            f1_key = 'f1_macro' if is_multiclass else 'f1_score'
+            f1_val = result.get('best_metrics', {}).get(f1_key, 0.0) if result else 0.0
+            print(f"  > [OK] Fold {fold_idx + 1} concluído. {f1_key.replace('_', ' ').upper()}: {f1_val:.4f}")
 
             if wandb.run:
                 log_search_fold_progress(

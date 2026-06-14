@@ -106,9 +106,11 @@ def run_training_process(
             epoch_number=epoch + 1, is_multiclass=is_multiclass
         )
 
+        f1_key = 'f1_macro' if is_multiclass else 'f1_score'
+
         history['train_loss'].append(train_loss)
         history['val_loss'].append(val_loss)
-        history['val_f1'].append(metrics['f1_macro'])
+        history['val_f1'].append(metrics[f1_key])
 
         if config['logging']['wandb']['enabled'] and is_final_training:
             log_final_training_metrics(
@@ -120,7 +122,7 @@ def run_training_process(
                 learning_rate=optimizer.param_groups[0]['lr']
             )
 
-        is_epoch_best = metrics['f1_macro'] > best_f1_score
+        is_epoch_best = metrics[f1_key] > best_f1_score
         
         print_epoch_log(
             epoch=epoch + 1, 
@@ -132,7 +134,7 @@ def run_training_process(
         )
 
         if is_epoch_best:
-            best_f1_score = metrics['f1_macro']
+            best_f1_score = metrics[f1_key]
             best_metrics = metrics
             patience_counter = 0
             
@@ -146,7 +148,7 @@ def run_training_process(
 
         if scheduler:
             if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                scheduler.step(metrics['f1_score'])
+                scheduler.step(metrics[f1_key])
             else:
                 scheduler.step()
 

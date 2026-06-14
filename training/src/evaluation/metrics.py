@@ -8,8 +8,8 @@ from sklearn.metrics import (
 )
 from sklearn.preprocessing import label_binarize
 
-DEFAULT_BINARY_CLASSES = ['Demented', 'Non Demented']
-DEFAULT_MULTICLASS_CLASSES = ['Mild+Moderate Dementia', 'Very mild Dementia']
+DEFAULT_BINARY_CLASSES = ['Non Demented', 'Demented']
+DEFAULT_MULTICLASS_CLASSES = ['Very mild Dementia', 'Mild+Moderate Dementia']
 
 BINARY_SCORE_WEIGHTS = {
     'f1': 0.35,
@@ -42,6 +42,33 @@ def _aggregate_predictions_by_subject(
     }).reset_index()
 
     return subject_agg['y_true'].values, subject_agg['y_pred'].values
+
+def _aggregate_probabilities_by_subject(
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    subject_ids: List[str]
+) -> Tuple[np.ndarray, np.ndarray]:
+    df_data = {'subject_id': subject_ids, 'y_true': y_true}
+    if y_prob.ndim == 1 or (y_prob.ndim == 2 and y_prob.shape[1] == 1):
+        proba_flat = y_prob.flatten()
+        df_data['y_prob'] = proba_flat
+        df = pd.DataFrame(df_data)
+        subject_agg = df.groupby('subject_id').agg({
+            'y_true': 'first',
+            'y_prob': 'mean'
+        }).reset_index()
+        return subject_agg['y_true'].values, subject_agg['y_prob'].values
+    else:
+        num_classes = y_prob.shape[1]
+        for i in range(num_classes):
+            df_data[f'prob_{i}'] = y_prob[:, i]
+        df = pd.DataFrame(df_data)
+        agg_dict = {'y_true': 'first'}
+        for i in range(num_classes):
+            agg_dict[f'prob_{i}'] = 'mean'
+        subject_agg = df.groupby('subject_id').agg(agg_dict).reset_index()
+        prob_cols = [f'prob_{i}' for i in range(num_classes)]
+        return subject_agg['y_true'].values, subject_agg[prob_cols].values
 
 def _compute_binary_error_metrics(cm: np.ndarray) -> Dict[str, Any]:
     tn, fp, fn, tp = cm.ravel()
@@ -187,7 +214,7 @@ def _roc_metrics_multiclass(y_true: np.ndarray, y_pred_proba: np.ndarray) -> Dic
 
 def _roc_metrics_binary(y_true: np.ndarray, y_pred_proba: np.ndarray) -> Dict[str, Any]:
     if isinstance(y_pred_proba, np.ndarray) and y_pred_proba.ndim == 2:
-        proba = y_pred_proba[:, 0] if y_pred_proba.shape[1] == 2 else y_pred_proba.flatten()
+        proba = y_pred_proba[:, 1] if y_pred_proba.shape[1] == 2 else y_pred_proba.flatten()
     else:
         proba = y_pred_proba
 
@@ -206,8 +233,17 @@ def _roc_metrics_binary(y_true: np.ndarray, y_pred_proba: np.ndarray) -> Dict[st
         'optimal_idx': int(optimal_idx)
     }
 
-def calculate_roc_metrics(y_true: np.ndarray, y_pred_proba: np.ndarray, is_multiclass: bool = False) -> Dict[str, Any]:
-    if is_multiclass:
+def calculate_roc_metrics(
+    y_true: np.ndarray, 
+    y_pred_proba: np.ndarray, 
+    is_multiclass: bool = False,
+    subject_ids: Optional[List[str]] = None
+) -> Dict[str, Any]:
+    if subject_ids is not None:
+        y_true, y_pred_proba = _aggregate_probabilities_by_subject(y_true, y_pred_proba, subject_ids)
+
+    num_classes = y_pred_proba.shape[1] if (isinstance(y_pred_proba, np.ndarray) and y_pred_proba.ndim == 2) else 2
+    if is_multiclass and num_classes > 2:
         return _roc_metrics_multiclass(y_true, y_pred_proba)
 
     return _roc_metrics_binary(y_true, y_pred_proba)

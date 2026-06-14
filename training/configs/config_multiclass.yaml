@@ -8,11 +8,11 @@
 model:
   name: "multiclass_classifier"
   num_classes: 2
-  class_names: ["Mild+Moderate Dementia", "Very mild Dementia"]
+  class_names: ["Very mild Dementia", "Mild+Moderate Dementia"]
   class_mapping:
-    "Mild Dementia": 0
-    "Moderate Dementia": 0
-    "Very mild Dementia": 1
+    "Very mild Dementia": 0
+    "Mild Dementia": 1
+    "Moderate Dementia": 1
   merge_classes:
     "Mild+Moderate Dementia": ["Mild Dementia", "Moderate Dementia"]
   filter_non_demented: true
@@ -46,7 +46,7 @@ training:
   patience: 25
   scheduler:
     type: "reduce_on_plateau"
-    params: { factor: 0.2, patience: 5, min_lr: 1e-7 }
+    params: { mode: "max", factor: 0.5, patience: 8, min_lr: 1e-6 }
 
 # ------------------------------------------------------------
 # 4. MÉTRICAS E VALIDAÇÃO
@@ -63,7 +63,7 @@ checkpoint:
 
 logging:
   wandb:
-    enabled: true
+    enabled: false
     project: "alzheimer-multiclass"
     entity: "samuel89-ufc-ai"
     run_name: null

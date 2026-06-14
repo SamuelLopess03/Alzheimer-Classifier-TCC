@@ -104,7 +104,8 @@ def _run_shared_evaluation_flow(
     fig_cm, fig_roc = generate_visual_reports(
         y_true=y_true, y_pred_proba=y_proba, test_metrics=test_metrics,
         class_names=class_names or None, is_multiclass=is_multiclass,
-        save_path=save_path, model_type=model_type_str
+        save_path=save_path, model_type=model_type_str,
+        subject_ids=test_subject_ids
     )
 
     log_inference_results(test_metrics, class_names or [], is_multiclass, fig_cm, fig_roc)

@@ -23,12 +23,31 @@ def load_test_dataset(data_path: str, model_type: str) -> tv_datasets.ImageFolde
     test_path = os.path.join(data_path, f'splits/{model_type}/test')
     if not os.path.exists(test_path):
         raise FileNotFoundError(f"Dataset de teste não encontrado em {test_path}")
-    return tv_datasets.ImageFolder(root=test_path, transform=None)
+    
+    dataset = tv_datasets.ImageFolder(root=test_path, transform=None)
+    
+    config = load_multiclass_config() if model_type == 'multiclass' else load_binary_config()
+    class_names = config['model']['class_names']
+    
+    dataset.class_to_idx = {name: idx for idx, name in enumerate(class_names)}
+    dataset.classes = class_names
+    dataset.samples = [
+        (path, dataset.class_to_idx[os.path.basename(os.path.dirname(path))])
+        for path, _ in dataset.samples
+    ]
+    dataset.targets = [label for _, label in dataset.samples]
+    
+    return dataset
 
 def save_inference_results(evaluation_results: Dict, models_path: str, model_type: str) -> Path:
+    test_metrics = evaluation_results['test_metrics'].copy()
+    
+    for key in ['fold', 'epoch', 'val_loss']:
+        test_metrics.pop(key, None)
+
     final_results = {
         'model_type': model_type,
-        'test_metrics': evaluation_results['test_metrics'],
+        'test_metrics': test_metrics,
         'gradcam_path': evaluation_results.get('gradcam_path')
     }
     output_dir = Path(models_path) / model_type
@@ -105,7 +124,8 @@ def run_inference_pipeline(
             architecture_name=architecture_name,
             class_names=class_names,
             device=device,
-            train_dataset=test_dataset
+            train_dataset=test_dataset,
+            verbose=False
         )
         checkpoint = torch.load(ckpt_file, map_location=device, weights_only=True)
         model.load_state_dict(checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint)

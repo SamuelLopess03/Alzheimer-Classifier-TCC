@@ -39,9 +39,19 @@ def run_training_flow(model_type: str, data_path: str) -> bool:
 
     print(f"Carregando dataset de: {train_path}\n")
     train_dataset = tv_datasets.ImageFolder(root=train_path, transform=None)
+    
+    class_names = config['model']['class_names']
+    train_dataset.class_to_idx = {name: idx for idx, name in enumerate(class_names)}
+    train_dataset.classes = class_names
+    train_dataset.samples = [
+        (path, train_dataset.class_to_idx[os.path.basename(os.path.dirname(path))])
+        for path, _ in train_dataset.samples
+    ]
+    train_dataset.targets = [label for _, label in train_dataset.samples]
+
     print(f"Dataset carregado: {len(train_dataset)} amostras.")
     
-    print_class_distribution(train_dataset, config['model']['class_names'])
+    print_class_distribution(train_dataset, class_names)
 
     all_results = run_random_search(
         train_dataset=train_dataset,
@@ -89,7 +99,16 @@ def run_final_training_flow(model_type: str, experiments_path: str, data_path: s
     train_path = os.path.join(data_path, f'splits/{model_type}/train')
     train_dataset = tv_datasets.ImageFolder(root=train_path, transform=None)
     
-    print_class_distribution(train_dataset, config['model']['class_names'])
+    class_names = config['model']['class_names']
+    train_dataset.class_to_idx = {name: idx for idx, name in enumerate(class_names)}
+    train_dataset.classes = class_names
+    train_dataset.samples = [
+        (path, train_dataset.class_to_idx[os.path.basename(os.path.dirname(path))])
+        for path, _ in train_dataset.samples
+    ]
+    train_dataset.targets = [label for _, label in train_dataset.samples]
+    
+    print_class_distribution(train_dataset, class_names)
 
     print_section("CONFIGURANDO SPLIT K-FOLD PARA ENSEMBLE")
     

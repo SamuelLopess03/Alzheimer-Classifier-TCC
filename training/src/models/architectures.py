@@ -135,16 +135,16 @@ def verify_grayscale_adaptation(
         print(f"\nErro na verificação: {e}\n")
         return False
 
-def _setup_criterion(loss_function: str, hyperparams_config: Dict, train_dataset, num_classes: int, architecture_name: str, device: torch.device, label_smoothing: Optional[float]) -> nn.Module:
+def _setup_criterion(loss_function: str, hyperparams_config: Dict, train_dataset, num_classes: int, architecture_name: str, device: torch.device, label_smoothing: Optional[float], verbose: bool = True) -> nn.Module:
     loss_cfg = hyperparams_config['loss_config'][loss_function]
     class_weights = None
     
     if loss_cfg['use_class_weights']:
-        print("Calculando pesos das classes...\n")
+        if verbose: print("Calculando pesos das classes...\n")
         labels = [sample[1] for sample in train_dataset]
         class_weights = compute_class_weight('balanced', classes=np.array(list(range(num_classes))), y=labels)
         class_weights = torch.tensor(class_weights, dtype=torch.float32).to(device)
-        print(f"   Class Weights: {class_weights.cpu().numpy()}\n")
+        if verbose: print(f"   Class Weights: {class_weights.cpu().numpy()}\n")
 
     if loss_function == 'crossentropy':
         if label_smoothing is None:
@@ -153,12 +153,12 @@ def _setup_criterion(loss_function: str, hyperparams_config: Dict, train_dataset
             label_smoothing = loss_cfg['label_smoothing'][arch_type]
 
         criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=label_smoothing if label_smoothing else 0.0)
-        print(f"Loss: CrossEntropyLoss (label_smoothing={label_smoothing})\n")
+        if verbose: print(f"Loss: CrossEntropyLoss (label_smoothing={label_smoothing})\n")
         return criterion
     
     raise ValueError(f"Loss function não suportada: {loss_function}\n")
 
-def _setup_optimizer(model: nn.Module, hyperparams: Dict, hyperparams_config: Dict, architecture_name: str) -> optim.Optimizer:
+def _setup_optimizer(model: nn.Module, hyperparams: Dict, hyperparams_config: Dict, architecture_name: str, verbose: bool = True) -> optim.Optimizer:
     optimizer_name = hyperparams['optimizer'].lower()
     lr = float(hyperparams['learning_rate'])
     arch_cfg = hyperparams_config['model_config'].get(architecture_name.lower())
@@ -178,9 +178,10 @@ def _setup_optimizer(model: nn.Module, hyperparams: Dict, hyperparams_config: Di
         if classifier_layer in name: head_params.append(param)
         else: backbone_params.append(param)
 
-    print(f"\nFine-Tuning com LR Diferencial:")
-    print(f"   Backbone LR: {backbone_lr:.2e} (ratio: {backbone_lr_ratio})")
-    print(f"   Head LR:     {head_lr:.2e}")
+    if verbose:
+        print(f"\nFine-Tuning com LR Diferencial:")
+        print(f"   Backbone LR: {backbone_lr:.2e} (ratio: {backbone_lr_ratio})")
+        print(f"   Head LR:     {head_lr:.2e}")
 
     param_groups = []
     if backbone_params: param_groups.append({'params': backbone_params, 'lr': backbone_lr})
@@ -198,7 +199,7 @@ def _setup_optimizer(model: nn.Module, hyperparams: Dict, hyperparams_config: Di
     else:
         raise ValueError(f"Optimizer não suportado: {optimizer_name}\n")
 
-    print(f"Optimizer: {optimizer_name.upper()} (backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e})\n")
+    if verbose: print(f"Optimizer: {optimizer_name.upper()} (backbone_lr={backbone_lr:.2e}, head_lr={head_lr:.2e})\n")
     return optimizer
 
 def create_model_with_architecture(
@@ -207,13 +208,15 @@ def create_model_with_architecture(
         class_names: List[str],
         device: torch.device,
         train_dataset,
-        label_smoothing: Optional[float] = None
+        label_smoothing: Optional[float] = None,
+        verbose: bool = True
 ) -> Tuple[nn.Module, nn.Module, optim.Optimizer]:
     hyperparams_config = load_hyperparameters_config()
 
-    print(f"{'-' * 60}")
-    print(f"CRIANDO MODELO COM CONFIGURAÇÃO")
-    print(f"{'-' * 60}\n")
+    if verbose:
+        print(f"{'-' * 60}")
+        print(f"CRIANDO MODELO COM CONFIGURAÇÃO")
+        print(f"{'-' * 60}\n")
 
     num_classes = len(class_names)
     model = create_model(
@@ -221,14 +224,16 @@ def create_model_with_architecture(
         hidden_units=hyperparams['hidden_units'],
         dropout=hyperparams['dropout'],
         num_classes=num_classes,
-        device=device
+        device=device,
+        verbose=verbose
     )
 
-    criterion = _setup_criterion(hyperparams['loss_function'], hyperparams_config, train_dataset, num_classes, architecture_name, device, label_smoothing)
+    criterion = _setup_criterion(hyperparams['loss_function'], hyperparams_config, train_dataset, num_classes, architecture_name, device, label_smoothing, verbose=verbose)
 
-    optimizer = _setup_optimizer(model, hyperparams, hyperparams_config, architecture_name)
+    optimizer = _setup_optimizer(model, hyperparams, hyperparams_config, architecture_name, verbose=verbose)
 
-    print(f"\n{'-' * 60}\n")
+    if verbose:
+        print(f"\n{'-' * 60}\n")
     return model, criterion, optimizer
 
 def get_architecture_specific_param_grid(architecture_name: str) -> Dict:

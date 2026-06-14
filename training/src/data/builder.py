@@ -42,13 +42,12 @@ def _copy_images_parallel(
 def _load_existing_split(
     train_path: str,
     test_path: str,
-    label: str
+    label: str,
+    class_names: List[str]
 ) -> Tuple[DatasetMetadata, DatasetMetadata, List[str]] | None:
     if os.path.exists(train_path) and os.path.exists(test_path):
-        classes = sorted([d for d in os.listdir(train_path) if os.path.isdir(os.path.join(train_path, d))])
-        
-        train_ds = DatasetMetadata(root=train_path, classes=classes)
-        test_ds  = DatasetMetadata(root=test_path,  classes=classes)
+        train_ds = DatasetMetadata(root=train_path, classes=class_names)
+        test_ds  = DatasetMetadata(root=test_path,  classes=class_names)
         
         print(f"Dataset {label} já existe. Pulando criação.\n")
         print(f"   Treino: {len(train_ds)} imagens | Teste: {len(test_ds)} imagens")
@@ -75,7 +74,7 @@ def prepare_dataset_binary(output_base_path: str = "./shared/data") -> Tuple[Dat
 
     train_path = os.path.join(output_base_path, "splits/binary/train")
     test_path  = os.path.join(output_base_path, "splits/binary/test")
-    cached = _load_existing_split(train_path, test_path, "Binário")
+    cached = _load_existing_split(train_path, test_path, "Binário", class_names)
     if cached:
         return cached
 
@@ -156,7 +155,7 @@ def prepare_dataset_multiclass(output_base_path: str = "./shared/data") -> Tuple
 
     train_path = os.path.join(output_base_path, "splits/multiclass/train")
     test_path  = os.path.join(output_base_path, "splits/multiclass/test")
-    cached = _load_existing_split(train_path, test_path, "Multiclasse")
+    cached = _load_existing_split(train_path, test_path, "Multiclasse", class_names)
     if cached:
         return cached
 

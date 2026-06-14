@@ -31,6 +31,7 @@ def generate_visual_reports(
     is_multiclass: bool,
     save_path: str, 
     model_type: str,
+    subject_ids: Optional[List[str]] = None
 ) -> Tuple:
     print(f"\n{'-' * 60}")
     print("GERANDO VISUALIZAÇÕES: CONFUSION MATRIX + ROC-AUC")
@@ -52,7 +53,8 @@ def generate_visual_reports(
         y_true=y_true,
         y_pred_proba=y_pred_proba,
         class_names=class_names,
-        is_multiclass=is_multiclass
+        is_multiclass=is_multiclass,
+        subject_ids=subject_ids
     )
 
     roc_path = os.path.join(save_path, f"roc_curve_{model_type.lower().replace(' ', '_')}.png")
