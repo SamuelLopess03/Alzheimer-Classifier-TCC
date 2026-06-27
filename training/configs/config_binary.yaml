@@ -61,7 +61,7 @@ checkpoint:
 
 logging:
   wandb:
-    enabled: false
+    enabled: true
     project: "alzheimer-binary"
     entity: "samuel89-ufc-ai"
     run_name: null

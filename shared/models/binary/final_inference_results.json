@@ -1,0 +1,51 @@
+{
+  "model_type": "binary",
+  "test_metrics": {
+    "accuracy": 0.8450704225352113,
+    "balanced_accuracy": 0.8376906318082789,
+    "matthews_correlation_coefficient": 0.6232481075496772,
+    "cohen_kappa": 0.6135576447303315,
+    "precision": 0.8663670333690455,
+    "recall": 0.8450704225352113,
+    "f1_score": 0.8512413790685363,
+    "precision_macro": 0.787569573283859,
+    "recall_macro": 0.8376906318082789,
+    "f1_macro": 0.8055763007219319,
+    "precision_per_class": [
+      0.9387755102040817,
+      0.6363636363636364
+    ],
+    "recall_per_class": [
+      0.8518518518518519,
+      0.8235294117647058
+    ],
+    "f1_per_class": [
+      0.8932038834951457,
+      0.717948717948718
+    ],
+    "support_per_class": [
+      54,
+      17
+    ],
+    "confusion_matrix": [
+      [
+        46,
+        8
+      ],
+      [
+        3,
+        14
+      ]
+    ],
+    "classification_report": "              precision    recall  f1-score   support\n\nNon Demented       0.94      0.85      0.89        54\n    Demented       0.64      0.82      0.72        17\n\n    accuracy                           0.85        71\n   macro avg       0.79      0.84      0.81        71\nweighted avg       0.87      0.85      0.85        71\n",
+    "specificity": 0.8518518518502743,
+    "negative_predictive_value": 0.9387755102021658,
+    "false_positive_rate": 0.1481481481478738,
+    "false_negative_rate": 0.17647058823425607,
+    "true_negative": 46,
+    "false_positive": 8,
+    "false_negative": 3,
+    "true_positive": 14
+  },
+  "gradcam_path": "/home/lisa/Documentos/Model_Alzheimer_TCC_Samuel/Alzheimer-Classifier-TCC/shared/models/binary/gradcam"
+}
