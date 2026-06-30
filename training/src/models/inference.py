@@ -18,7 +18,7 @@ from src.utils.config import (
 )
 from src.utils.hardware import get_pytorch_device
 from .architectures import create_model
-from src.data.preprocessing import MedicalImagePreprocessor
+from src.data.preprocessing import MedicalImagePreprocessor, prepare_image_for_augmentation
 from src.evaluation.gradcam import generate_ensemble_gradcam_image, run_ensemble_gradcam
 
 class InferenceWrapper(nn.Module):
@@ -93,8 +93,10 @@ class InferenceWrapper(nn.Module):
         return self.predict_tensor(subject_tensor)
 
     def load_image(self, path_or_stream: Union[str, io.BytesIO]) -> torch.Tensor:
-        img = Image.open(path_or_stream).convert('L')
-        return transforms.ToTensor()(img).unsqueeze(0)
+        img = Image.open(path_or_stream)
+        img_preprocessed = prepare_image_for_augmentation(img)
+        img_pil = Image.fromarray(img_preprocessed)
+        return transforms.ToTensor()(img_pil).unsqueeze(0)
 
     def predict_tensor(self, x: torch.Tensor) -> Dict:
         x = x.to(self.device)
