@@ -246,3 +246,25 @@ class InferenceWrapper(nn.Module):
         except Exception as e:
             print(f"Erro ao gerar Grad-CAM em base64: {e}")
             return None
+
+    def print_prediction(self, result: Dict):
+        print(f"\n{'=' * 60}")
+        print(f"RESULTADO DO DIAGNÓSTICO (PREDIÇÃO)")
+        print(f"{'=' * 60}")
+        print(f"Predição Final: {result['final_prediction']}")
+        
+        print(f"\n1. Classificação Binária:")
+        bin_pred = result['binary_prediction']
+        print(f"   Classe: {bin_pred['class_name']} (Confiança: {bin_pred['confidence']*100:.2f}%)")
+        print(f"   Probabilidades:")
+        for name, prob in bin_pred['probabilities'].items():
+            print(f"     - {name}: {prob*100:.2f}%")
+            
+        if result['requires_multiclass'] and result['multiclass_prediction']:
+            print(f"\n2. Classificação Multiclasse:")
+            multi_pred = result['multiclass_prediction']
+            print(f"   Classe: {multi_pred['class_name']} (Confiança: {multi_pred['confidence']*100:.2f}%)")
+            print(f"   Probabilidades:")
+            for name, prob in multi_pred['probabilities'].items():
+                print(f"     - {name}: {prob*100:.2f}%")
+        print(f"{'=' * 60}\n")
