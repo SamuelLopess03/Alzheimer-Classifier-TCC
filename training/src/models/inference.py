@@ -224,14 +224,15 @@ class InferenceWrapper(nn.Module):
         img_tensor_transformed = transform(img_tensor).to(self.device)
         return target_models, class_names, img_tensor_transformed
 
-    def generate_gradcam(self, image_path: Optional[str], save_dir: str, subject_name: str, slice_index: int, requires_multiclass: bool, img_tensor: torch.Tensor = None):
+    def generate_gradcam(self, image_path: Optional[str], save_dir: str, subject_name: str, slice_index: int, requires_multiclass: bool, img_tensor: torch.Tensor = None, predicted_class_name: Optional[str] = None, confidence: Optional[float] = None):
         target_models, class_names, img_tensor_transformed = self._prepare_gradcam_input(image_path, img_tensor, requires_multiclass)
         os.makedirs(save_dir, exist_ok=True)
         file_name = f"{subject_name}_slice_{slice_index:02d}.png"
 
         run_ensemble_gradcam(
             models=target_models, img_tensor=img_tensor_transformed, device=self.device,
-            class_names=class_names, save_path=os.path.join(save_dir, file_name)
+            class_names=class_names, save_path=os.path.join(save_dir, file_name),
+            predicted_class_name=predicted_class_name, confidence=confidence
         )
 
     def get_gradcam_base64(self, image_path: Optional[str], requires_multiclass: bool, img_tensor: torch.Tensor = None) -> Optional[str]: 

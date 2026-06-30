@@ -95,13 +95,18 @@ def main():
             if args.gradcam:
                 subject_name = Path(args.image).stem
                 gradcam_tensor = img_tensor.to(evaluator.device).squeeze(0)
+                pred_class = result['final_prediction']
+                confidence = result['multiclass_prediction']['confidence'] if result['requires_multiclass'] else result['binary_prediction']['confidence']
+                
                 evaluator.generate_gradcam(
                     args.image, 
                     args.output_path, 
                     subject_name, 
                     slice_index=1, 
                     requires_multiclass=result['requires_multiclass'],
-                    img_tensor=gradcam_tensor
+                    img_tensor=gradcam_tensor,
+                    predicted_class_name=pred_class,
+                    confidence=confidence
                 )
         else:
             print(f"Alvo: Sujeito Completo -> {os.path.basename(os.path.normpath(args.subject))}")
@@ -115,6 +120,8 @@ def main():
                     
                     central_images = get_central_elements(files, args.gradcam_samples)
                     subject_name = os.path.basename(os.path.normpath(args.subject))
+                    pred_class = result['final_prediction']
+                    confidence = result['multiclass_prediction']['confidence'] if result['requires_multiclass'] else result['binary_prediction']['confidence']
                     
                     print(f"Gerando Grad-CAM para {len(central_images)} fatia(s) central(is)...")
                     for i, img_file in enumerate(central_images):
@@ -123,7 +130,9 @@ def main():
                             args.output_path,
                             subject_name=subject_name,
                             slice_index=i + 1,
-                            requires_multiclass=result['requires_multiclass']
+                            requires_multiclass=result['requires_multiclass'],
+                            predicted_class_name=pred_class,
+                            confidence=confidence
                         )
 
         evaluator.print_prediction(result)

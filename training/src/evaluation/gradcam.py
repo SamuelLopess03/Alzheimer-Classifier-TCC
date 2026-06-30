@@ -92,9 +92,34 @@ def run_ensemble_gradcam(
     device: torch.device,
     class_names: List[str],
     save_path: str,
-    target_layer_path: Optional[str] = None
+    target_layer_path: Optional[str] = None,
+    predicted_class_name: Optional[str] = None,
+    confidence: Optional[float] = None
 ) -> str:
     visualization = generate_ensemble_gradcam_image(models, img_tensor, device, target_layer_path)
+    
+    if predicted_class_name is not None:
+        border_height = 40
+        h, w, c = visualization.shape
+        new_img = np.zeros((h + border_height, w, c), dtype=np.uint8)
+        new_img[:h, :, :] = visualization
+        
+        text = f"Pred: {predicted_class_name}"
+        if confidence is not None:
+            text += f" ({confidence*100:.1f}%)"
+            
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.42
+        color = (255, 255, 255)
+        thickness = 1
+        
+        text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
+        text_x = (w - text_size[0]) // 2
+        text_y = h + (border_height + text_size[1]) // 2
+        
+        cv2.putText(new_img, text, (text_x, text_y), font, font_scale, color, thickness, cv2.LINE_AA)
+        visualization = new_img
+
     cv2.imwrite(save_path, cv2.cvtColor(visualization, cv2.COLOR_RGB2BGR))
     return save_path
 

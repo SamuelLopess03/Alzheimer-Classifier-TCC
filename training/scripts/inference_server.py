@@ -53,13 +53,18 @@ async def internal_predict(
         
         gradcam_dir = str(SHARED_DIR / f"gradcam_outputs/{subject_id}")
         gradcam_tensor = img_tensor.to(wrapper.device).squeeze(0)
+        pred_class = result['final_prediction']
+        confidence = result['multiclass_prediction']['confidence'] if result['requires_multiclass'] else result['binary_prediction']['confidence']
+        
         wrapper.generate_gradcam(
             image_path=None,
             save_dir=gradcam_dir,
             subject_name=subject_id,
             slice_index=1,
             requires_multiclass=result['requires_multiclass'],
-            img_tensor=gradcam_tensor
+            img_tensor=gradcam_tensor,
+            predicted_class_name=pred_class,
+            confidence=confidence
         )
         
         return JSONResponse({
@@ -103,6 +108,8 @@ async def internal_predict_subject(
             
             central_pairs = get_central_elements(paired, gradcam_samples)
             gradcam_dir = str(SHARED_DIR / f"gradcam_outputs/{subject_id}")
+            pred_class = result['final_prediction']
+            confidence = result['multiclass_prediction']['confidence'] if result['requires_multiclass'] else result['binary_prediction']['confidence']
             
             for i, (fname, tensor) in enumerate(central_pairs):
                 gradcam_tensor = tensor.to(wrapper.device).squeeze(0)
@@ -112,7 +119,9 @@ async def internal_predict_subject(
                     subject_name=subject_id,
                     slice_index=i + 1,
                     requires_multiclass=result['requires_multiclass'],
-                    img_tensor=gradcam_tensor
+                    img_tensor=gradcam_tensor,
+                    predicted_class_name=pred_class,
+                    confidence=confidence
                 )
                 gradcam_saved_paths.append(f"{gradcam_dir}/{subject_id}_slice_{i+1:02d}.png")
 
