@@ -94,30 +94,48 @@ def run_ensemble_gradcam(
     save_path: str,
     target_layer_path: Optional[str] = None,
     predicted_class_name: Optional[str] = None,
-    confidence: Optional[float] = None
+    confidence: Optional[float] = None,
+    binary_confidence: Optional[float] = None
 ) -> str:
     visualization = generate_ensemble_gradcam_image(models, img_tensor, device, target_layer_path)
     
     if predicted_class_name is not None:
-        border_height = 40
+        has_two_lines = binary_confidence is not None and confidence is not None
+        border_height = 60 if has_two_lines else 40
+        
         h, w, c = visualization.shape
         new_img = np.zeros((h + border_height, w, c), dtype=np.uint8)
         new_img[:h, :, :] = visualization
         
-        text = f"Pred: {predicted_class_name}"
-        if confidence is not None:
-            text += f" ({confidence*100:.1f}%)"
-            
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.42
         color = (255, 255, 255)
+        color_dim = (180, 180, 180)
         thickness = 1
         
-        text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
-        text_x = (w - text_size[0]) // 2
-        text_y = h + (border_height + text_size[1]) // 2
+        if has_two_lines:
+            line1 = f"Pred: {predicted_class_name}"
+            scale1 = 0.44
+            size1 = cv2.getTextSize(line1, font, scale1, thickness)[0]
+            x1 = (w - size1[0]) // 2
+            y1 = h + 20
+            cv2.putText(new_img, line1, (x1, y1), font, scale1, color, thickness, cv2.LINE_AA)
+            
+            line2 = f"Demented: {binary_confidence*100:.1f}%  |  Class: {confidence*100:.1f}%"
+            scale2 = 0.38
+            size2 = cv2.getTextSize(line2, font, scale2, thickness)[0]
+            x2 = (w - size2[0]) // 2
+            y2 = h + 48
+            cv2.putText(new_img, line2, (x2, y2), font, scale2, color_dim, thickness, cv2.LINE_AA)
+        else:
+            text = f"Pred: {predicted_class_name}"
+            if confidence is not None:
+                text += f" ({confidence*100:.1f}%)"
+            scale = 0.42
+            size = cv2.getTextSize(text, font, scale, thickness)[0]
+            x = (w - size[0]) // 2
+            y = h + (border_height + size[1]) // 2
+            cv2.putText(new_img, text, (x, y), font, scale, color, thickness, cv2.LINE_AA)
         
-        cv2.putText(new_img, text, (text_x, text_y), font, font_scale, color, thickness, cv2.LINE_AA)
         visualization = new_img
 
     cv2.imwrite(save_path, cv2.cvtColor(visualization, cv2.COLOR_RGB2BGR))
