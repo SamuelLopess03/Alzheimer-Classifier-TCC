@@ -125,8 +125,9 @@ class InferenceWrapper(nn.Module):
             subject_binary_probs = avg_binary_probs.mean(dim=0)
             subject_binary_pred = torch.argmax(subject_binary_probs).item()
 
+            demented_idx = self.binary_class_names.index("Demented")
             avg_multiclass_probs = None
-            if subject_binary_pred == 0:
+            if subject_binary_pred == demented_idx:
                 x_multi = self.multiclass_transform(x)
                 
                 all_multi_probs = []
@@ -152,7 +153,8 @@ class InferenceWrapper(nn.Module):
             'requires_multiclass': False
         }
 
-        if binary_class_idx == 0 and multiclass_probs is not None:
+        demented_idx = self.binary_class_names.index("Demented")
+        if binary_class_idx == demented_idx and multiclass_probs is not None:
             multiclass_class_idx = torch.argmax(multiclass_probs).item()
             multiclass_class_name = self.multiclass_class_names[multiclass_class_idx]
 
