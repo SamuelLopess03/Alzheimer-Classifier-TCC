@@ -94,7 +94,22 @@ class InferenceWrapper(nn.Module):
         except Exception:
             file_list.sort()
             
-        tensors = [self.load_image(p) for p in file_list]
+        # Aplica o Resize antes do cat para garantir que todas as fatias têm o mesmo tamanho
+        if self.binary_models:
+            bin_arch = self.binary_models[0].architecture_name
+            from src.data.preprocessing import MedicalImagePreprocessor
+            target_size = MedicalImagePreprocessor(bin_arch).get_image_size()
+            resize_transform = transforms.Resize((target_size, target_size))
+        else:
+            resize_transform = None
+
+        tensors = []
+        for p in file_list:
+            t = self.load_image(p)           # shape: (1, C, H, W)
+            if resize_transform is not None:
+                t = resize_transform(t)       # (1, C, target, target)
+            tensors.append(t)
+            
         subject_tensor = torch.cat(tensors, dim=0)
         
         return self.predict_tensor(subject_tensor)
