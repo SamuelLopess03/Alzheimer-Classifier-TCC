@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Union
 
 from ..models import get_target_layer
 from ..data.preprocessing import denormalize_images, MedicalImagePreprocessor
-from ..data.subject_manager import get_central_slices_per_class, resolve_dataset_chain
+from ..data.subject_manager import get_central_slices_per_class, resolve_dataset_chain, get_central_elements
 from src.utils.config import load_hyperparameters_config
 
 def _collect_class_samples(
