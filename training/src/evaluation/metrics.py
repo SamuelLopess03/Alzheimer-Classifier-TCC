@@ -7,6 +7,7 @@ from sklearn.metrics import (
     roc_curve, auc, roc_auc_score
 )
 from sklearn.preprocessing import label_binarize
+from ..data.subject_manager import get_central_elements
 
 DEFAULT_BINARY_CLASSES = ['Non Demented', 'Demented']
 DEFAULT_MULTICLASS_CLASSES = ['Very mild Dementia', 'Mild+Moderate Dementia']
@@ -33,28 +34,31 @@ def _aggregate_predictions_by_subject(
     y_true: np.ndarray, 
     y_prob: np.ndarray, 
     subject_ids: List[str],
-    top_k: int = 20
+    center_ratio: float = 0.5
 ) -> Tuple[np.ndarray, np.ndarray]:
     unique_subjects = list(dict.fromkeys(subject_ids))
     subj_y_true = []
     subj_y_pred = []
     
     subject_ids = np.array(subject_ids)
+    num_classes = y_prob.shape[1] if y_prob.ndim == 2 else 2
     
     for subj in unique_subjects:
         indices = np.where(subject_ids == subj)[0]
         subj_y_true.append(y_true[indices[0]])
         
-        subj_probs = y_prob[indices]
+        # Filtra dinamicamente as fatias centrais
         num_slices = len(indices)
-        k = min(top_k, num_slices)
-        
-        dementia_class_idx = 1 if subj_probs.shape[1] > 1 else 0
-        dementia_probs = subj_probs[:, dementia_class_idx]
-        top_k_idx = np.argsort(dementia_probs)[::-1][:k]
-        
-        avg_prob = np.mean(subj_probs[top_k_idx], axis=0)
-        subj_y_pred.append(np.argmax(avg_prob))
+        if num_slices > 30:
+            k = max(30, int(num_slices * center_ratio))
+            indices = np.array(get_central_elements(list(indices), k))
+            
+        subj_probs = y_prob[indices]
+
+        # Votação por maioria simples
+        votes = np.argmax(subj_probs, axis=1)
+        pred = np.bincount(votes, minlength=num_classes).argmax()
+        subj_y_pred.append(pred)
         
     return np.array(subj_y_true), np.array(subj_y_pred)
 
@@ -62,7 +66,7 @@ def _aggregate_probabilities_by_subject(
     y_true: np.ndarray,
     y_prob: np.ndarray,
     subject_ids: List[str],
-    top_k: int = 20
+    center_ratio: float = 0.5
 ) -> Tuple[np.ndarray, np.ndarray]:
     unique_subjects = list(dict.fromkeys(subject_ids))
     subj_y_true = []
@@ -74,21 +78,18 @@ def _aggregate_probabilities_by_subject(
         indices = np.where(subject_ids == subj)[0]
         subj_y_true.append(y_true[indices[0]])
         
-        subj_probs = y_prob[indices]
+        # Filtra dinamicamente as fatias centrais
         num_slices = len(indices)
-        k = min(top_k, num_slices)
+        if num_slices > 30:
+            k = max(30, int(num_slices * center_ratio))
+            indices = np.array(get_central_elements(list(indices), k))
+            
+        subj_probs = y_prob[indices]
         
         if subj_probs.ndim == 1 or (subj_probs.ndim == 2 and subj_probs.shape[1] == 1):
-            flat_probs = subj_probs.flatten()
-            top_k_idx = np.argsort(flat_probs)[::-1][:k]
-            avg_prob = np.mean(flat_probs[top_k_idx])
-            subj_y_prob.append(avg_prob)
+            subj_y_prob.append(np.median(subj_probs.flatten()))
         else:
-            dementia_class_idx = 1 if subj_probs.shape[1] > 1 else 0
-            dementia_probs = subj_probs[:, dementia_class_idx]
-            top_k_idx = np.argsort(dementia_probs)[::-1][:k]
-            avg_prob = np.mean(subj_probs[top_k_idx], axis=0)
-            subj_y_prob.append(avg_prob)
+            subj_y_prob.append(np.median(subj_probs, axis=0))
             
     return np.array(subj_y_true), np.array(subj_y_prob)
 
@@ -158,7 +159,9 @@ def evaluate_performance(
     if len(y_true) != len(subject_ids):
         raise ValueError(f"Dimensões incompatíveis: y_true ({len(y_true)}) != subject_ids ({len(subject_ids)})")
 
-    y_subj_true, y_subj_pred = _aggregate_predictions_by_subject(y_true, y_prob, subject_ids, top_k=20)
+    y_subj_true, y_subj_pred = _aggregate_predictions_by_subject(
+        y_true, y_prob, subject_ids, center_ratio=0.5
+    )
     
     if class_names is None:
         class_names = DEFAULT_MULTICLASS_CLASSES if is_multiclass else DEFAULT_BINARY_CLASSES
@@ -262,7 +265,9 @@ def calculate_roc_metrics(
     subject_ids: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     if subject_ids is not None:
-        y_true, y_pred_proba = _aggregate_probabilities_by_subject(y_true, y_pred_proba, subject_ids, top_k=20)
+        y_true, y_pred_proba = _aggregate_probabilities_by_subject(
+            y_true, y_pred_proba, subject_ids, center_ratio=0.5
+        )
 
     num_classes = y_pred_proba.shape[1] if (isinstance(y_pred_proba, np.ndarray) and y_pred_proba.ndim == 2) else 2
     if is_multiclass and num_classes > 2:

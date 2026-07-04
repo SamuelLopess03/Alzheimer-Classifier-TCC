@@ -19,7 +19,8 @@ def _collect_class_samples(
     test_loader: DataLoader, 
     device: torch.device, 
     num_classes: int, 
-    samples_per_class: int
+    samples_per_class: int,
+    center_ratio: float = 0.5
 ) -> Dict[int, List[torch.Tensor]]:
     wrapper_dataset = getattr(test_loader, 'dataset', None)
     
@@ -29,14 +30,34 @@ def _collect_class_samples(
         base_indices = np.arange(len(base_ds))
 
     if base_ds and hasattr(base_ds, 'samples') and base_indices is not None:
-        class_indices = get_central_slices_per_class(base_ds, num_classes, samples_per_class, indices=base_indices)
+        from collections import defaultdict
+        from ..data.subject_manager import extract_subject_id
         
-        base_to_wrapper = {base_idx: i for i, base_idx in enumerate(base_indices)}
+        class_patients_slices = defaultdict(lambda: defaultdict(list))
         
-        return {
-            class_idx: [wrapper_dataset[base_to_wrapper[idx]][0].to(device) for idx in indices]
-            for class_idx, indices in class_indices.items()
-        }
+        for wrapper_idx, base_idx in enumerate(base_indices):
+            path, class_idx = base_ds.samples[base_idx]
+            subj_id = extract_subject_id(os.path.basename(path))
+            class_patients_slices[class_idx][subj_id].append(wrapper_idx)
+
+        filtered_indices = []
+        for class_idx in range(num_classes):
+            for subj_id, wrapper_idxs in class_patients_slices[class_idx].items():
+                num_slices = len(wrapper_idxs)
+                if num_slices > 30:
+                    k = max(30, int(num_slices * center_ratio))
+                    selected_idxs = get_central_elements(wrapper_idxs, k)
+                else:
+                    selected_idxs = wrapper_idxs
+                filtered_indices.extend(selected_idxs)
+
+        class_samples = {i: [] for i in range(num_classes)}
+        for base_idx in filtered_indices:
+            label = wrapper_dataset[base_idx][1]
+            if len(class_samples[label]) < samples_per_class:
+                class_samples[label].append(wrapper_dataset[base_idx][0].to(device))
+
+        return class_samples
 
     print("[AVISO] Dataset raiz incompatível (sem 'samples'). O Grad-CAM não gerará imagens, pois o limite por paciente não pode ser garantido.")
     return {i: [] for i in range(num_classes)}
