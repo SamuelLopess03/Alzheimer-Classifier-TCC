@@ -117,22 +117,29 @@ def main():
             if args.gradcam:
                 files = [f for f in os.listdir(args.subject) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
                 if files:
-                    from src.data.subject_manager import get_central_elements
-                    files.sort(key=lambda fname: extract_slice_index(fname))
+                    try:
+                        files.sort(key=lambda fname: extract_slice_index(fname))
+                    except Exception:
+                        files.sort()
                     
-                    central_images = get_central_elements(files, args.gradcam_samples)
+                    top_k_indices = result.get('top_k_indices', [])
+                    num_samples = min(args.gradcam_samples, len(top_k_indices))
+                    target_indices = top_k_indices[:num_samples]
+                    
                     subject_name = os.path.basename(os.path.normpath(args.subject))
                     pred_class = result['final_prediction']
                     confidence = result['multiclass_prediction']['confidence'] if result['requires_multiclass'] else result['binary_prediction']['confidence']
                     binary_conf = result['binary_prediction']['probabilities'].get('Demented') if result['requires_multiclass'] else None
                     
-                    print(f"Gerando Grad-CAM para {len(central_images)} fatia(s) central(is)...")
-                    for i, img_file in enumerate(central_images):
+                    print(f"Gerando Grad-CAM para {num_samples} fatia(s) de maior indício patológico...")
+                    for idx in target_indices:
+                        img_file = files[idx]
+                        slice_idx = extract_slice_index(img_file)
                         evaluator.generate_gradcam(
                             os.path.join(args.subject, img_file), 
                             args.output_path,
                             subject_name=subject_name,
-                            slice_index=i + 1,
+                            slice_index=slice_idx,
                             requires_multiclass=result['requires_multiclass'],
                             predicted_class_name=pred_class,
                             confidence=confidence,

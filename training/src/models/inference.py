@@ -43,6 +43,7 @@ class InferenceWrapper(nn.Module):
         
         self.binary_transform = None
         self.multiclass_transform = None
+        self.top_k = 20
 
     def load_models(self):
         print(f"\n{'=' * 60}\nINICIALIZANDO SISTEMA DE INFERÊNCIA EM CASCATA (ENSEMBLE)\n{'=' * 60}")
@@ -87,6 +88,12 @@ class InferenceWrapper(nn.Module):
         if not file_list:
             raise ValueError(f"Nenhuma imagem encontrada na pasta: {folder_path}")
             
+        from src.data.subject_manager import extract_slice_index
+        try:
+            file_list.sort(key=lambda fname: extract_slice_index(os.path.basename(fname)))
+        except Exception:
+            file_list.sort()
+            
         tensors = [self.load_image(p) for p in file_list]
         subject_tensor = torch.cat(tensors, dim=0)
         
@@ -102,15 +109,24 @@ class InferenceWrapper(nn.Module):
         x = x.to(self.device)
         binary_probs, multiclass_probs = self._forward_ensemble(x)
 
-        binary_probs_avg = binary_probs.mean(dim=0)
+        demented_idx = self.binary_class_names.index("Demented")
+        num_slices = x.size(0)
+        k = min(self.top_k, num_slices)
+
+        slice_demented_probs = binary_probs[:, demented_idx]
+        _, top_k_indices = torch.topk(slice_demented_probs, k=k)
+
+        binary_probs_avg = binary_probs[top_k_indices].mean(dim=0)
         multiclass_probs_avg = None
         if multiclass_probs is not None:
-            multiclass_probs_avg = multiclass_probs.mean(dim=0)
+            multiclass_probs_avg = multiclass_probs[top_k_indices].mean(dim=0)
 
-        return self._format_prediction_result(
+        result = self._format_prediction_result(
             binary_probs=binary_probs_avg,
             multiclass_probs=multiclass_probs_avg
         )
+        result['top_k_indices'] = top_k_indices.cpu().numpy().tolist()
+        return result
 
     def _forward_ensemble(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         self._ensure_models_loaded()
@@ -124,10 +140,17 @@ class InferenceWrapper(nn.Module):
                 all_bin_probs.append(torch.softmax(output, dim=1))
             
             avg_binary_probs = torch.stack(all_bin_probs).mean(dim=0)
-            subject_binary_probs = avg_binary_probs.mean(dim=0)
+            
+            demented_idx = self.binary_class_names.index("Demented")
+            num_slices = x.size(0)
+            k = min(self.top_k, num_slices)
+            
+            slice_demented_probs = avg_binary_probs[:, demented_idx]
+            _, top_k_indices = torch.topk(slice_demented_probs, k=k)
+            
+            subject_binary_probs = avg_binary_probs[top_k_indices].mean(dim=0)
             subject_binary_pred = torch.argmax(subject_binary_probs).item()
 
-            demented_idx = self.binary_class_names.index("Demented")
             avg_multiclass_probs = None
             if subject_binary_pred == demented_idx:
                 x_multi = self.multiclass_transform(x)
