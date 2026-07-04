@@ -33,7 +33,7 @@ def _aggregate_predictions_by_subject(
     y_true: np.ndarray, 
     y_prob: np.ndarray, 
     subject_ids: List[str],
-    top_k: int = 10
+    top_k: int = 20
 ) -> Tuple[np.ndarray, np.ndarray]:
     unique_subjects = list(dict.fromkeys(subject_ids))
     subj_y_true = []
@@ -62,7 +62,7 @@ def _aggregate_probabilities_by_subject(
     y_true: np.ndarray,
     y_prob: np.ndarray,
     subject_ids: List[str],
-    top_k: int = 10
+    top_k: int = 20
 ) -> Tuple[np.ndarray, np.ndarray]:
     unique_subjects = list(dict.fromkeys(subject_ids))
     subj_y_true = []
