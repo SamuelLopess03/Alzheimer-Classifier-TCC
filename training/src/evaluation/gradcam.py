@@ -52,10 +52,21 @@ def _collect_class_samples(
                 filtered_indices.extend(selected_idxs)
 
         class_samples = {i: [] for i in range(num_classes)}
-        for base_idx in filtered_indices:
-            label = wrapper_dataset[base_idx][1]
+        for wrapper_idx in filtered_indices:
+            label = wrapper_dataset[wrapper_idx][1]
             if len(class_samples[label]) < samples_per_class:
-                class_samples[label].append(wrapper_dataset[base_idx][0].to(device))
+                base_idx = base_indices[wrapper_idx]
+                path, _ = base_ds.samples[base_idx]
+                from ..data.subject_manager import extract_subject_id, extract_slice_index
+                filename = os.path.basename(path)
+                subj_id = extract_subject_id(filename)
+                slice_idx = extract_slice_index(filename)
+                
+                class_samples[label].append({
+                    "img_tensor": wrapper_dataset[wrapper_idx][0].to(device),
+                    "subject_id": subj_id,
+                    "slice_index": slice_idx
+                })
 
         return class_samples
 
@@ -116,46 +127,42 @@ def run_ensemble_gradcam(
     target_layer_path: Optional[str] = None,
     predicted_class_name: Optional[str] = None,
     confidence: Optional[float] = None,
-    binary_confidence: Optional[float] = None
+    binary_confidence: Optional[float] = None,
+    subject_id: Optional[str] = None,
+    slice_index: Optional[int] = None
 ) -> str:
     visualization = generate_ensemble_gradcam_image(models, img_tensor, device, target_layer_path)
     
-    if predicted_class_name is not None:
-        has_two_lines = binary_confidence is not None and confidence is not None
-        border_height = 60 if has_two_lines else 40
+    if predicted_class_name is not None or subject_id is not None:
+        lines = []
+        if predicted_class_name is not None:
+            if binary_confidence is not None and confidence is not None:
+                lines.append(f"Pred: {predicted_class_name}")
+                lines.append(f"Demented: {binary_confidence*100:.1f}%  |  Class: {confidence*100:.1f}%")
+            else:
+                text = f"Pred: {predicted_class_name}"
+                if confidence is not None:
+                    text += f" ({confidence*100:.1f}%)"
+                lines.append(text)
+        if subject_id is not None:
+            lines.append(f"ID: {subject_id}  |  Slice: {slice_index if slice_index is not None else 0}")
+            
+        border_height = 20 + 20 * len(lines)
         
         h, w, c = visualization.shape
         new_img = np.zeros((h + border_height, w, c), dtype=np.uint8)
         new_img[:h, :, :] = visualization
         
         font = cv2.FONT_HERSHEY_SIMPLEX
-        color = (255, 255, 255)
-        color_dim = (180, 180, 180)
         thickness = 1
         
-        if has_two_lines:
-            line1 = f"Pred: {predicted_class_name}"
-            scale1 = 0.44
-            size1 = cv2.getTextSize(line1, font, scale1, thickness)[0]
-            x1 = (w - size1[0]) // 2
-            y1 = h + 20
-            cv2.putText(new_img, line1, (x1, y1), font, scale1, color, thickness, cv2.LINE_AA)
-            
-            line2 = f"Demented: {binary_confidence*100:.1f}%  |  Class: {confidence*100:.1f}%"
-            scale2 = 0.38
-            size2 = cv2.getTextSize(line2, font, scale2, thickness)[0]
-            x2 = (w - size2[0]) // 2
-            y2 = h + 48
-            cv2.putText(new_img, line2, (x2, y2), font, scale2, color_dim, thickness, cv2.LINE_AA)
-        else:
-            text = f"Pred: {predicted_class_name}"
-            if confidence is not None:
-                text += f" ({confidence*100:.1f}%)"
-            scale = 0.42
-            size = cv2.getTextSize(text, font, scale, thickness)[0]
+        for idx, line in enumerate(lines):
+            scale = 0.42 if idx == 0 and predicted_class_name is not None else 0.38
+            color = (255, 255, 255) if idx == 0 and predicted_class_name is not None else (180, 180, 180)
+            size = cv2.getTextSize(line, font, scale, thickness)[0]
             x = (w - size[0]) // 2
-            y = h + (border_height + size[1]) // 2
-            cv2.putText(new_img, text, (x, y), font, scale, color, thickness, cv2.LINE_AA)
+            y = h + 20 + 20 * idx
+            cv2.putText(new_img, line, (x, y), font, scale, color, thickness, cv2.LINE_AA)
         
         visualization = new_img
 
@@ -187,8 +194,12 @@ def generate_gradcam_visualizations(
         class_save_path = os.path.join(save_path, class_name)
         os.makedirs(class_save_path, exist_ok=True)
         
-        for idx, img_tensor in enumerate(samples):
-            filename = f"gradcam_ensemble_{class_name}_sample_{idx}.png"
+        for idx, sample_dict in enumerate(samples):
+            subj_id = sample_dict["subject_id"]
+            slice_idx = sample_dict["slice_index"]
+            img_tensor = sample_dict["img_tensor"]
+            
+            filename = f"gradcam_ensemble_{class_name}_{subj_id}_slice_{slice_idx}.png"
             dest = os.path.join(class_save_path, filename)
             
             run_ensemble_gradcam(
@@ -196,7 +207,9 @@ def generate_gradcam_visualizations(
                 img_tensor=img_tensor,
                 device=device,
                 class_names=class_names,
-                save_path=dest
+                save_path=dest,
+                subject_id=subj_id,
+                slice_index=slice_idx
             )
 
     print(f"\nVisualizações Grad-CAM geradas em: {save_path}\n")
