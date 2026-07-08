@@ -94,7 +94,6 @@ class InferenceWrapper(nn.Module):
         except Exception:
             file_list.sort()
             
-        # Aplica o Resize antes do cat para garantir que todas as fatias têm o mesmo tamanho
         if self.binary_models:
             bin_arch = self.binary_models[0].architecture_name
             from src.data.preprocessing import MedicalImagePreprocessor
@@ -122,61 +121,93 @@ class InferenceWrapper(nn.Module):
 
     def predict_tensor(self, x: torch.Tensor) -> Dict:
         x = x.to(self.device)
-        binary_probs, multiclass_probs = self._forward_ensemble(x)
-
-        demented_idx = self.binary_class_names.index("Demented")
-        num_slices = x.size(0)
-        k = min(self.top_k, num_slices)
-
-        slice_demented_probs = binary_probs[:, demented_idx]
-        _, top_k_indices = torch.topk(slice_demented_probs, k=k)
-
-        binary_probs_avg = binary_probs[top_k_indices].mean(dim=0)
-        multiclass_probs_avg = None
-        if multiclass_probs is not None:
-            multiclass_probs_avg = multiclass_probs[top_k_indices].mean(dim=0)
-
-        result = self._format_prediction_result(
-            binary_probs=binary_probs_avg,
-            multiclass_probs=multiclass_probs_avg
-        )
-        result['top_k_indices'] = top_k_indices.cpu().numpy().tolist()
+        result = self._forward_ensemble(x)
         return result
 
-    def _forward_ensemble(self, x: torch.Tensor) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+    def _forward_ensemble(self, x: torch.Tensor) -> Dict:
         self._ensure_models_loaded()
+        
+        from src.data.subject_manager import get_central_elements
+        
+        num_slices = x.size(0)
+        indices = list(range(num_slices))
+        
+        # Filtra as fatias centrais (mínimo 30)
+        if num_slices > 30:
+            k_central = max(30, int(num_slices * 0.5))
+            selected_indices = get_central_elements(indices, k_central)
+        else:
+            selected_indices = indices
+            
+        x_filtered = x[selected_indices]
 
         with torch.no_grad():
-            x_bin = self.binary_transform(x)
+            x_bin = self.binary_transform(x_filtered)
             
             all_bin_probs = []
             for model in self.binary_models:
                 output = model(x_bin)
                 all_bin_probs.append(torch.softmax(output, dim=1))
             
-            avg_binary_probs = torch.stack(all_bin_probs).mean(dim=0)
+            avg_binary_probs = torch.stack(all_bin_probs).mean(dim=0) # shape: (num_slices_filtered, num_classes)
             
+            votes_bin = torch.argmax(avg_binary_probs, dim=1) # voto de cada fatia
             demented_idx = self.binary_class_names.index("Demented")
-            num_slices = x.size(0)
-            k = min(self.top_k, num_slices)
             
-            slice_demented_probs = avg_binary_probs[:, demented_idx]
-            _, top_k_indices = torch.topk(slice_demented_probs, k=k)
+            bin_counts = torch.bincount(votes_bin, minlength=self.binary_num_classes)
+            subject_binary_class_idx = torch.argmax(bin_counts).item()
+            subject_binary_class_name = self.binary_class_names[subject_binary_class_idx]
             
-            subject_binary_probs = avg_binary_probs[top_k_indices].mean(dim=0)
-            subject_binary_pred = torch.argmax(subject_binary_probs).item()
+            subject_binary_prob_val = avg_binary_probs[:, subject_binary_class_idx].mean().item()
+            
+            binary_probs_dict = {
+                self.binary_class_names[i]: avg_binary_probs[:, i].median().item()
+                for i in range(self.binary_num_classes)
+            }
 
-            avg_multiclass_probs = None
-            if subject_binary_pred == demented_idx:
-                x_multi = self.multiclass_transform(x)
+            result = {
+                'binary_prediction': {
+                    'class_name': subject_binary_class_name,
+                    'confidence': subject_binary_prob_val,
+                    'probabilities': binary_probs_dict
+                },
+                'multiclass_prediction': None,
+                'final_prediction': subject_binary_class_name,
+                'requires_multiclass': False,
+                'top_k_indices': selected_indices # Todas as fatias centrais selecionadas para Grad-CAM
+            }
+
+            if subject_binary_class_idx == demented_idx:
+                x_multi = self.multiclass_transform(x_filtered)
                 
                 all_multi_probs = []
                 for model in self.multiclass_models:
                     output = model(x_multi)
                     all_multi_probs.append(torch.softmax(output, dim=1))
                 avg_multiclass_probs = torch.stack(all_multi_probs).mean(dim=0)
+                
+                # Votação por maioria para multiclasse
+                votes_multi = torch.argmax(avg_multiclass_probs, dim=1)
+                multi_counts = torch.bincount(votes_multi, minlength=self.multiclass_num_classes)
+                subject_multi_class_idx = torch.argmax(multi_counts).item()
+                subject_multi_class_name = self.multiclass_class_names[subject_multi_class_idx]
+                
+                subject_multi_prob_val = avg_multiclass_probs[:, subject_multi_class_idx].mean().item()
+                
+                multiclass_probs_dict = {
+                    self.multiclass_class_names[i]: avg_multiclass_probs[:, i].median().item()
+                    for i in range(self.multiclass_num_classes)
+                }
 
-            return avg_binary_probs, avg_multiclass_probs
+                result['multiclass_prediction'] = {
+                    'class_name': subject_multi_class_name,
+                    'confidence': subject_multi_prob_val,
+                    'probabilities': multiclass_probs_dict
+                }
+                result['final_prediction'] = subject_multi_class_name
+                result['requires_multiclass'] = True
+
+            return result
 
     def _format_prediction_result(self, binary_probs: torch.Tensor, multiclass_probs: Optional[torch.Tensor]) -> Dict:
         binary_class_idx = torch.argmax(binary_probs).item()
