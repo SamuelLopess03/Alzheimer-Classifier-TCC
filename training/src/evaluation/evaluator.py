@@ -119,7 +119,8 @@ def _run_shared_evaluation_flow(
             generate_gradcam_visualizations(
                 models=models, test_loader=test_loader, device=device,
                 class_names=class_names or None, save_path=gradcam_path,
-                architecture_name=arch_name, samples_per_class=gradcam_samples
+                architecture_name=arch_name, samples_per_class=gradcam_samples,
+                y_true=y_true, y_pred=y_pred
             )
         except Exception as e:
             print(f"Aviso: Grad-CAM falhou - {str(e)}\n")

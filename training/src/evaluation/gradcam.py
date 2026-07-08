@@ -20,7 +20,9 @@ def _collect_class_samples(
     device: torch.device, 
     num_classes: int, 
     samples_per_class: int,
-    center_ratio: float = 0.5
+    center_ratio: float = 0.5,
+    y_true: np.ndarray = None,
+    y_pred: np.ndarray = None
 ) -> Dict[int, List[torch.Tensor]]:
     wrapper_dataset = getattr(test_loader, 'dataset', None)
     
@@ -29,6 +31,11 @@ def _collect_class_samples(
     if base_ds and base_indices is None:
         base_indices = np.arange(len(base_ds))
 
+    # Constrói máscara de acertos por índice de fatia (nível flat do test_loader)
+    correct_mask = None
+    if y_true is not None and y_pred is not None:
+        correct_mask = (np.array(y_true) == np.array(y_pred))
+
     if base_ds and hasattr(base_ds, 'samples') and base_indices is not None:
         from collections import defaultdict
         from ..data.subject_manager import extract_subject_id
@@ -36,6 +43,10 @@ def _collect_class_samples(
         class_patients_slices = defaultdict(lambda: defaultdict(list))
         
         for wrapper_idx, base_idx in enumerate(base_indices):
+            # Pula fatias classificadas incorretamente quando a máscara está disponível
+            if correct_mask is not None and wrapper_idx < len(correct_mask):
+                if not correct_mask[wrapper_idx]:
+                    continue
             path, class_idx = base_ds.samples[base_idx]
             subj_id = extract_subject_id(os.path.basename(path))
             class_patients_slices[class_idx][subj_id].append(wrapper_idx)
@@ -176,18 +187,25 @@ def generate_gradcam_visualizations(
     class_names: list,
     save_path: str,
     architecture_name: str,
-    samples_per_class: int = 10
+    samples_per_class: int = 10,
+    y_true: np.ndarray = None,
+    y_pred: np.ndarray = None
 ) -> None:
     if not isinstance(models, list):
         models = [models]
 
     print(f"\n{'-' * 60}")
     print(f"GERANDO VISUALIZAÇÕES GRAD-CAM (ENSEMBLE: {len(models)} modelos)")
+    if y_true is not None and y_pred is not None:
+        print("  Filtro: somente fatias classificadas CORRETAMENTE")
     print(f"{'-' * 60}\n")
 
     for m in models: m.architecture_name = architecture_name
     
-    class_samples = _collect_class_samples(test_loader, device, len(class_names), samples_per_class)
+    class_samples = _collect_class_samples(
+        test_loader, device, len(class_names), samples_per_class,
+        y_true=y_true, y_pred=y_pred
+    )
     
     for class_idx, samples in class_samples.items():
         class_name = class_names[class_idx]
